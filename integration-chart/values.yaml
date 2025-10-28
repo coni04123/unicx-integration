@@ -1,0 +1,26 @@
+image:
+  repository: unicxacr.azurecr.io/unicx-integration
+  tag: 0.1.1
+  pullPolicy: Always
+
+service:
+  type: LoadBalancer
+  port: 80
+  targetPort: 5000
+
+env:
+  - name: MONGODB_URI
+    value:
+  - name: JWT_SECRET
+    value:
+  - name: EMAIL_USER
+    value:
+  - name: EMAIL_PASS
+    value:
+  - name: ENCRYPTION_KEY
+    value:
+  - name: AZURE_STORAGE_CONNECTION_STRING
+    value:
+    
+replicaCount: 2
+

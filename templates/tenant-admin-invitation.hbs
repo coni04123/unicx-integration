@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Welcome to {{companyName}} - Tenant Administrator Access</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f8fafc;
+        }
+        .container {
+            background-color: #ffffff;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 40px 30px;
+            text-align: center;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 28px;
+            font-weight: 600;
+        }
+        .header p {
+            margin: 10px 0 0 0;
+            font-size: 16px;
+            opacity: 0.9;
+        }
+        .content {
+            padding: 40px 30px;
+        }
+        .welcome-section {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .welcome-section h2 {
+            color: #2d3748;
+            font-size: 24px;
+            margin: 0 0 10px 0;
+        }
+        .welcome-section p {
+            color: #718096;
+            font-size: 16px;
+            margin: 0;
+        }
+        .credentials-box {
+            background-color: #f7fafc;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 30px 0;
+            text-align: center;
+        }
+        .credentials-box h3 {
+            color: #2d3748;
+            margin: 0 0 15px 0;
+            font-size: 18px;
+        }
+        .credential-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 0;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        .credential-item:last-child {
+            border-bottom: none;
+        }
+        .credential-label {
+            font-weight: 600;
+            color: #4a5568;
+        }
+        .credential-value {
+            font-family: 'Courier New', monospace;
+            background-color: #edf2f7;
+            padding: 4px 8px;
+            border-radius: 4px;
+            color: #2d3748;
+        }
+        .entity-info {
+            background-color: #f0fff4;
+            border-left: 4px solid #48bb78;
+            padding: 20px;
+            margin: 30px 0;
+            border-radius: 0 8px 8px 0;
+        }
+        .entity-info h3 {
+            color: #22543d;
+            margin: 0 0 10px 0;
+            font-size: 18px;
+        }
+        .entity-details {
+            color: #2f855a;
+        }
+        .features-section {
+            margin: 30px 0;
+        }
+        .features-section h3 {
+            color: #2d3748;
+            font-size: 20px;
+            margin: 0 0 20px 0;
+        }
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+        }
+        .feature-item {
+            background-color: #f7fafc;
+            padding: 20px;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+        .feature-item h4 {
+            color: #2d3748;
+            margin: 0 0 8px 0;
+            font-size: 16px;
+        }
+        .feature-item p {
+            color: #718096;
+            margin: 0;
+            font-size: 14px;
+        }
+        .cta-section {
+            text-align: center;
+            margin: 40px 0;
+        }
+        .login-button {
+            display: inline-block;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            text-decoration: none;
+            padding: 15px 30px;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 16px;
+            transition: transform 0.2s ease;
+        }
+        .login-button:hover {
+            transform: translateY(-2px);
+        }
+        .security-notice {
+            background-color: #fff5f5;
+            border: 1px solid #fed7d7;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 30px 0;
+        }
+        .security-notice h4 {
+            color: #c53030;
+            margin: 0 0 10px 0;
+            font-size: 16px;
+        }
+        .security-notice p {
+            color: #742a2a;
+            margin: 0;
+            font-size: 14px;
+        }
+        .footer {
+            background-color: #2d3748;
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        .footer h4 {
+            margin: 0 0 15px 0;
+            font-size: 18px;
+        }
+        .footer p {
+            margin: 0 0 20px 0;
+            color: #a0aec0;
+            font-size: 14px;
+        }
+        .social-links {
+            margin: 20px 0;
+        }
+        .social-links a {
+            color: #a0aec0;
+            text-decoration: none;
+            margin: 0 10px;
+            font-size: 14px;
+        }
+        .social-links a:hover {
+            color: white;
+        }
+        .company-info {
+            font-size: 12px;
+            color: #718096;
+            margin-top: 20px;
+        }
+        @media (max-width: 600px) {
+            body {
+                padding: 10px;
+            }
+            .header, .content, .footer {
+                padding: 20px;
+            }
+            .feature-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <h1>{{companyName}}</h1>
+            <p>Tenant Administrator Portal</p>
+        </div>
+
+        <!-- Main Content -->
+        <div class="content">
+            <!-- Welcome Section -->
+            <div class="welcome-section">
+                <h2>Welcome, {{firstName}}!</h2>
+                <p>You've been granted Tenant Administrator access to the {{companyName}} platform.</p>
+            </div>
+
+            <!-- Login Credentials -->
+            <div class="credentials-box">
+                <h3>🔐 Your Login Credentials</h3>
+                <div class="credential-item">
+                    <span class="credential-label">Email:</span>
+                    <span class="credential-value">{{email}}</span>
+                </div>
+                <div class="credential-item">
+                    <span class="credential-label">Temporary Password:</span>
+                    <span class="credential-value">{{tempPassword}}</span>
+                </div>
+            </div>
+
+            <!-- Entity Information -->
+            <div class="entity-info">
+                <h3>🏢 Your Organization</h3>
+                <div class="entity-details">
+                    <p><strong>Entity:</strong> {{entity.name}}</p>
+                    <p><strong>Type:</strong> {{entity.type}}</p>
+                    <p><strong>Path:</strong> {{entity.path}}</p>
+                </div>
+            </div>
+
+            <!-- Features Section -->
+            <div class="features-section">
+                <h3>🚀 What You Can Do</h3>
+                <div class="feature-grid">
+                    {{#each features}}
+                    <div class="feature-item">
+                        <h4>{{title}}</h4>
+                        <p>{{description}}</p>
+                    </div>
+                    {{/each}}
+                </div>
+            </div>
+
+            <!-- Call to Action -->
+            <div class="cta-section">
+                <a href="{{loginUrl}}" class="login-button">Access Your Dashboard</a>
+            </div>
+
+            <!-- Security Notice -->
+            <div class="security-notice">
+                <h4>🔒 Security Notice</h4>
+                <p>For your security, please change your temporary password immediately after your first login. This password will expire in 7 days.</p>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="footer">
+            <h4>Need Help?</h4>
+            <p>If you have any questions or need assistance, please don't hesitate to contact our support team.</p>
+            
+            <div class="social-links">
+                {{#if socialLinks.website}}
+                <a href="{{socialLinks.website}}">Website</a>
+                {{/if}}
+                {{#if socialLinks.linkedin}}
+                <a href="{{socialLinks.linkedin}}">LinkedIn</a>
+                {{/if}}
+                {{#if socialLinks.twitter}}
+                <a href="{{socialLinks.twitter}}">Twitter</a>
+                {{/if}}
+            </div>
+
+            <div class="company-info">
+                <p>{{companyName}}<br>
+                {{companyAddress}}</p>
+                <p>Support: <a href="mailto:{{supportEmail}}" style="color: #a0aec0;">{{supportEmail}}</a></p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

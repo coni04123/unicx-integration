@@ -1,0 +1,27 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "integration-chart.fullname" . }}
+  labels:
+    app: {{ include "integration-chart.name" . }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ include "integration-chart.name" . }}
+  template:
+    metadata:
+      labels:
+        app: {{ include "integration-chart.name" . }}
+    spec:
+      containers:
+        - name: integration-chart
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - containerPort: {{ .Values.service.targetPort }}
+          env:
+            {{- range .Values.env }}
+            - name: {{ .name }}
+              value: {{ .value | quote }}
+              {{- end }}
