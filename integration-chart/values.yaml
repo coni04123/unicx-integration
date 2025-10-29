@@ -21,6 +21,31 @@ env:
     value:
   - name: AZURE_STORAGE_CONNECTION_STRING
     value:
+  - name: AZURE_SERVICE_BUS_CONNECTION_STRING
+    value:
     
 replicaCount: 2
 
+certManager:
+  clusterIssuer:
+    enabled: true
+    name: letsencrypt-production
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: powerstar04123@gmail.com
+    privateKeySecretName: letsencrypt-prod
+    ingressClass: nginx
+
+ingress:
+  enabled: true
+  className: public
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+  hosts:
+    - host: system-backend.2n5global.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: tls-secret
+      hosts:
+        - system-backend.2n5global.com
