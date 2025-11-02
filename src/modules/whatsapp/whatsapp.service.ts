@@ -456,6 +456,11 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
       const fromPhoneNumber = this.cleanPhoneNumber(contact.number);
       const toPhoneNumber = this.getE164FromSession(sessionId);
 
+      // Determine conversation ID - use group name if group, otherwise use phone number
+      const conversationId = contactInfo.isGroup && contactInfo.groupName 
+        ? `group-${contactInfo.groupName}` 
+        : message.from;
+
       const messageData = {
         _id: new Types.ObjectId(),
         whatsappMessageId: message.id._serialized,
@@ -470,7 +475,7 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
         status: MessageStatus.DELIVERED,
         sentAt: new Date(message.timestamp * 1000),
         deliveredAt: new Date(),
-        conversationId: message.from,
+        conversationId: conversationId,
         entityId: session.entityId,
         entityIdPath: entity.entityIdPath,
         tenantId: session.tenantId,
@@ -478,6 +483,11 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
         isExternalNumber,
         externalSenderName,
         externalSenderPhone,
+        // WhatsApp contact information
+        whatsappAvatarUrl: contactInfo.avatarUrl,
+        whatsappUsername: contactInfo.username || contactInfo.name,
+        whatsappGroupName: contactInfo.groupName,
+        isGroupMessage: contactInfo.isGroup || false,
         userId: registeredUser ? registeredUser._id : null,
         metadata: {
           hasMedia: message.hasMedia,
@@ -546,8 +556,16 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
         mediaUrl = await this.handleMediaUpload(message);
       }
 
+      // Get contact info for recipient
+      const contactInfo = await this.getContactInfo(message);
+      
       const fromPhoneNumber = this.getE164FromSession(sessionId);
       const toPhoneNumber = message.to;
+
+      // Determine conversation ID
+      const conversationId = contactInfo.isGroup && contactInfo.groupName 
+        ? `group-${contactInfo.groupName}` 
+        : message.to;
 
       const messageData = {
         _id: new Types.ObjectId(),
@@ -562,10 +580,15 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
         mediaUrl,
         status: MessageStatus.SENT,
         sentAt: new Date(message.timestamp * 1000),
-        conversationId: message.to,
+        conversationId: conversationId,
         entityId: session.entityId,
         entityIdPath: entity.entityIdPath,
         tenantId: session.tenantId,
+        // WhatsApp contact information
+        whatsappAvatarUrl: contactInfo.avatarUrl,
+        whatsappUsername: contactInfo.username || contactInfo.name,
+        whatsappGroupName: contactInfo.groupName,
+        isGroupMessage: contactInfo.isGroup || false,
         metadata: {
           hasMedia: message.hasMedia,
           isForwarded: message.isForwarded,
@@ -1186,7 +1209,8 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
         $group: {
           _id: '$conversationId',
           lastMessage: { $last: '$content' },
-          lastMessageAt: { $last: '$createdAt' },
+          lastMessageAt: { $last: '$sentAt' },
+          lastMessageType: { $last: '$type' },
           totalMessages: { $sum: 1 },
           unreadCount: {
             $sum: {
@@ -1201,27 +1225,52 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
           isExternalNumber: { $last: '$isExternalNumber' },
           externalSenderName: { $last: '$externalSenderName' },
           externalSenderPhone: { $last: '$externalSenderPhone' },
-          // Get contact info from the most recent message
+          // Get WhatsApp contact info from the most recent message
+          whatsappAvatarUrl: { $last: '$whatsappAvatarUrl' },
+          whatsappUsername: { $last: '$whatsappUsername' },
+          whatsappGroupName: { $last: '$whatsappGroupName' },
+          isGroupMessage: { $last: '$isGroupMessage' },
           contactName: { $last: '$metadata.senderContactName' },
           contactPhone: { $last: '$metadata.senderContactPhone' },
+          fromPhoneNumber: { $last: '$fromPhoneNumber' },
+          toPhoneNumber: { $last: '$toPhoneNumber' },
+          direction: { $last: '$direction' },
         },
       },
       { $sort: { lastMessageAt: -1 } },
     ]);
 
-    // Enhance conversation data with external tag information
-    const enhancedConversations = conversations.map(conv => ({
-      ...conv,
-      conversationId: conv._id,
-      // Determine if this conversation is with an external number
-      isExternal: conv.isExternalNumber || false,
-      // Get display name - prefer external sender name, fallback to contact name
-      displayName: conv.externalSenderName || conv.contactName || 'Unknown',
-      // Get display phone
-      displayPhone: conv.externalSenderPhone || conv.contactPhone || conv._id,
-      // Add external tag for frontend
-      tags: conv.isExternalNumber ? ['External'] : [],
-    }));
+    // Enhance conversation data with display information
+    const enhancedConversations = conversations.map(conv => {
+      // Determine display name - prefer group name, then WhatsApp username, then external sender name, then contact name
+      let displayName = conv.whatsappGroupName || 
+                       conv.whatsappUsername || 
+                       conv.externalSenderName || 
+                       conv.contactName || 
+                       'Unknown';
+      
+      // For groups, show group name
+      if (conv.isGroupMessage && conv.whatsappGroupName) {
+        displayName = conv.whatsappGroupName;
+      }
+      
+      // Determine display phone
+      const displayPhone = conv.isGroupMessage ? null : 
+                          (conv.externalSenderPhone || conv.contactPhone || conv.fromPhoneNumber || conv._id);
+
+      return {
+        ...conv,
+        conversationId: conv._id,
+        // Determine if this conversation is with an external number
+        isExternal: conv.isExternalNumber || false,
+        // Display information
+        displayName,
+        displayPhone,
+        avatarUrl: conv.whatsappAvatarUrl || null,
+        // Add external tag for frontend
+        tags: conv.isExternalNumber ? ['External'] : [],
+      };
+    });
 
     return enhancedConversations;
   }
@@ -1252,18 +1301,52 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
   /**
    * Extract contact information from WhatsApp message
    * @param message WhatsApp message object
-   * @returns Contact info object
+   * @returns Contact info object with avatar, username, and group info
    */
-  private async getContactInfo(message: any): Promise<{ name: string; phone: string }> {
+  private async getContactInfo(message: any): Promise<{ 
+    name: string; 
+    phone: string; 
+    avatarUrl?: string; 
+    username?: string;
+    groupName?: string;
+    isGroup?: boolean;
+  }> {
     try {
       // Try to get contact info from WhatsApp
       const contact = await message.getContact();
       const name = contact.pushname || contact.name || contact.shortName || '';
       const phone = contact.number || message.from;
       
+      // Get profile picture URL
+      let avatarUrl = null;
+      try {
+        const profilePicUrl = await contact.getProfilePicUrl();
+        avatarUrl = profilePicUrl || null;
+      } catch (error) {
+        // Profile picture not available
+        this.logger.debug(`No profile picture for ${phone}`);
+      }
+
+      // Check if message is from a group
+      let groupName = null;
+      let isGroup = false;
+      try {
+        if (message.from.includes('@g.us')) {
+          isGroup = true;
+          const chat = await message.getChat();
+          groupName = chat.name || null;
+        }
+      } catch (error) {
+        this.logger.debug(`Not a group message or failed to get group info: ${error.message}`);
+      }
+      
       return {
         name: name.trim() || 'Unknown',
-        phone: phone
+        phone: phone,
+        avatarUrl: avatarUrl || undefined,
+        username: name.trim() || undefined,
+        groupName: groupName || undefined,
+        isGroup: isGroup
       };
     } catch (error) {
       this.logger.warn(`Failed to get contact info for ${message.from}:`, error);

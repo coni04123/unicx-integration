@@ -9,6 +9,7 @@ import {
   UseGuards,
   Query,
   Request,
+  BadRequestException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { UsersService } from './users.service';
@@ -98,6 +99,22 @@ export class UsersController {
     return this.usersService.searchUsers(query, req.user.tenantId);
   }
 
+  @Get('me')
+  @ApiOperation({ summary: 'Get current user profile' })
+  @ApiResponse({ status: 200, description: 'User profile retrieved successfully' })
+  @ApiResponse({ status: 404, description: 'User not found' })
+  async getProfile(@Request() req) {
+    if (!req.user || !req.user.sub) {
+      throw new BadRequestException('User ID not found in token');
+    }
+    
+    // Ensure we have a valid user ID
+    const userId = String(req.user.sub).trim();
+    const tenantId = req.user.tenantId ? String(req.user.tenantId).trim() : '';
+    
+    return this.usersService.findOne(userId, tenantId);
+  }
+
   @Get(':id')
   @RequireTenant()
   @ApiOperation({ summary: 'Get user by ID' })
@@ -105,6 +122,37 @@ export class UsersController {
   @ApiResponse({ status: 404, description: 'User not found' })
   async findOne(@Param('id') id: string, @Request() req) {
     return this.usersService.findOne(id, req.user.tenantId);
+  }
+
+  @Patch('me')
+  @ApiOperation({ summary: 'Update current user profile' })
+  @ApiResponse({ status: 200, description: 'Profile updated successfully' })
+  @ApiResponse({ status: 404, description: 'User not found' })
+  async updateProfile(
+    @Body() updateUserDto: UpdateUserDto,
+    @Request() req,
+  ) {
+    return this.usersService.update(req.user.sub, updateUserDto, req.user.sub, req.user.tenantId || '');
+  }
+
+  @Post('verify-email')
+  @ApiOperation({ summary: 'Verify email address with token' })
+  @ApiResponse({ status: 200, description: 'Email verified successfully' })
+  @ApiResponse({ status: 400, description: 'Invalid or expired token' })
+  async verifyEmail(
+    @Body('token') token: string,
+    @Body('userId') userId: string,
+  ) {
+    return this.usersService.verifyEmail(token, userId);
+  }
+
+  @Post('resend-email-verification')
+  @ApiOperation({ summary: 'Resend email verification email' })
+  @ApiResponse({ status: 200, description: 'Verification email sent successfully' })
+  @ApiResponse({ status: 400, description: 'No pending email verification' })
+  async resendEmailVerification(@Request() req) {
+    await this.usersService.resendEmailVerification(req.user.sub);
+    return { message: 'Verification email sent successfully' };
   }
 
   @Patch(':id')

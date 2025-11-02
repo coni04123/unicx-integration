@@ -170,10 +170,33 @@ export class WhatsAppController {
 
   @Get('conversations')
   @RequireTenant()
-  @ApiOperation({ summary: 'Get list of conversations. Conversations with unregistered numbers include "External" tag.' })
+  @ApiOperation({ summary: 'Get list of conversations with WhatsApp contact info. Conversations with unregistered numbers include "External" tag.' })
   @ApiResponse({ status: 200, description: 'Conversations retrieved successfully. External conversations include tags: ["External"]' })
   async getConversations(@Request() req) {
-    return this.whatsappService.getConversations(req.user.tenantId);
+    return this.whatsappService.getConversations(req.user.tenantId || '');
+  }
+
+  @Get('conversations/:conversationId/messages')
+  @RequireTenant()
+  @ApiOperation({ summary: 'Get messages for a specific conversation' })
+  @ApiQuery({ name: 'page', required: false, description: 'Page number' })
+  @ApiQuery({ name: 'limit', required: false, description: 'Items per page' })
+  @ApiResponse({ status: 200, description: 'Messages retrieved successfully' })
+  async getConversationMessages(
+    @Param('conversationId') conversationId: string,
+    @Query() query: any,
+    @Request() req,
+  ) {
+    const filters = {
+      ...query,
+      conversationId,
+    };
+
+    if (query.entityId || req.user.entityId !== SYSTEM_ENTITY_ID.toString()) {
+      filters.entityId = query.entityId || req.user.entityId;
+    }
+
+    return this.whatsappService.getMessages(filters);
   }
 
   @Post('upload-media')

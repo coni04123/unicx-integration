@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, BadRequestException, ForbiddenException 
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Entity } from '../../common/schemas/entity.schema';
+import { EntityType as CustomEntityType } from '../../common/schemas/entity-type.schema';
 import { User, UserRole } from '../../common/schemas/user.schema';
 import { CreateEntityDto } from './dto/create-entity.dto';
 import { UpdateEntityDto } from './dto/update-entity.dto';
@@ -15,11 +16,31 @@ export class EntitiesService {
     private entityModel: Model<Entity>,
     @InjectModel(User.name)
     private userModel: Model<User>,
+    @InjectModel(CustomEntityType.name)
+    private entityTypeModel: Model<CustomEntityType>,
   ) {}
 
   async create(createEntityDto: CreateEntityDto, userId: string, userRole: string, userEntityId: string): Promise<Entity> {
-    const { name, type, parentId, metadata } = createEntityDto;
+    const { name, type, customEntityTypeId, parentId, metadata } = createEntityDto;
 
+    // Validate custom entity type if provided
+    if (customEntityTypeId) {
+      if (type !== 'custom') {
+        throw new BadRequestException('customEntityTypeId can only be used when type is "custom"');
+      }
+
+      const customEntityType = await this.entityTypeModel.findOne({
+        _id: new Types.ObjectId(customEntityTypeId),
+        userId: new Types.ObjectId(userId),
+        isActive: true,
+      });
+
+      if (!customEntityType) {
+        throw new NotFoundException('Custom entity type not found');
+      }
+    } else if (type === 'custom') {
+      throw new BadRequestException('customEntityTypeId is required when type is "custom"');
+    }
 
     // Validate parent exists if provided
     let parent: Entity | null = null;
@@ -68,6 +89,7 @@ export class EntitiesService {
       _id: newObjectId,
       name,
       type,
+      customEntityTypeId: customEntityTypeId ? new Types.ObjectId(customEntityTypeId) : null,
       parentId: new Types.ObjectId(parentId) || null,
       path,
       entityIdPath,
@@ -77,7 +99,22 @@ export class EntitiesService {
       createdBy: userId,
     });
 
-    return entity.save();
+    const savedEntity = await entity.save();
+
+    // Populate customEntityType if type is custom
+    if (savedEntity.type === 'custom' && savedEntity.customEntityTypeId) {
+      const customEntityType = await this.entityTypeModel.findById(savedEntity.customEntityTypeId);
+      return {
+        ...savedEntity.toObject(),
+        customEntityType: customEntityType ? {
+          _id: customEntityType._id,
+          title: customEntityType.title,
+          color: customEntityType.color,
+        } : null,
+      } as Entity;
+    }
+
+    return savedEntity;
   }
 
   async findAll(tenantId: string, filters?: any): Promise<Entity[]> {
@@ -107,7 +144,25 @@ export class EntitiesService {
       query.entityIdPath = new Types.ObjectId(filters.ancestorId); 
     }
 
-    return this.entityModel.find(query).sort({ path: 1 });
+    const entities = await this.entityModel.find(query).sort({ path: 1 });
+
+    // Populate customEntityTypeId for entities with type 'custom'
+    const entitiesWithPopulated = await Promise.all(entities.map(async (entity) => {
+      if (entity.type === 'custom' && entity.customEntityTypeId) {
+        const customEntityType = await this.entityTypeModel.findById(entity.customEntityTypeId);
+        return {
+          ...entity.toObject(),
+          customEntityType: customEntityType ? {
+            _id: customEntityType._id,
+            title: customEntityType.title,
+            color: customEntityType.color,
+          } : null,
+        };
+      }
+      return entity.toObject();
+    }));
+
+    return entitiesWithPopulated as Entity[];
   }
 
   async findOne(id: string, tenantId: string): Promise<Entity> {
@@ -119,6 +174,19 @@ export class EntitiesService {
 
     if (!entity) {
       throw new NotFoundException('Entity not found');
+    }
+
+    // Populate customEntityTypeId if type is custom
+    if (entity.type === 'custom' && entity.customEntityTypeId) {
+      const customEntityType = await this.entityTypeModel.findById(entity.customEntityTypeId);
+      return {
+        ...entity.toObject(),
+        customEntityType: customEntityType ? {
+          _id: customEntityType._id,
+          title: customEntityType.title,
+          color: customEntityType.color,
+        } : null,
+      } as Entity;
     }
 
     return entity;
@@ -168,6 +236,42 @@ export class EntitiesService {
       updateData.type = updateEntityDto.type;
     }
 
+    // Update custom entity type
+    if (updateEntityDto.customEntityTypeId !== undefined) {
+      if (updateEntityDto.type === 'custom' || entity.type === 'custom') {
+        if (updateEntityDto.customEntityTypeId) {
+          // Validate custom entity type exists
+          const customEntityType = await this.entityTypeModel.findOne({
+            _id: new Types.ObjectId(updateEntityDto.customEntityTypeId),
+            userId: new Types.ObjectId(userId),
+            isActive: true,
+          });
+
+          if (!customEntityType) {
+            throw new NotFoundException('Custom entity type not found');
+          }
+
+          updateData.customEntityTypeId = new Types.ObjectId(updateEntityDto.customEntityTypeId);
+          updateData.type = 'custom';
+        } else {
+          // Removing custom entity type - need to set a default type
+          throw new BadRequestException('Cannot remove customEntityTypeId. Please set a different type first.');
+        }
+      } else {
+        throw new BadRequestException('customEntityTypeId can only be used when type is "custom"');
+      }
+    }
+
+    // If type is being changed to custom but no customEntityTypeId provided
+    if (updateEntityDto.type === 'custom' && !updateEntityDto.customEntityTypeId && entity.type !== 'custom') {
+      throw new BadRequestException('customEntityTypeId is required when type is "custom"');
+    }
+
+    // If type is being changed from custom to something else, clear customEntityTypeId
+    if (updateEntityDto.type && updateEntityDto.type !== 'custom' && entity.type === 'custom') {
+      updateData.customEntityTypeId = null;
+    }
+
     // Update metadata
     if (updateEntityDto.metadata) {
       updateData.metadata = updateEntityDto.metadata;
@@ -178,7 +282,22 @@ export class EntitiesService {
       updateData.isExpanded = updateEntityDto.isExpanded;
     }
 
-    return this.entityModel.findByIdAndUpdate(new Types.ObjectId(id), updateData, { new: true });
+    const updatedEntity = await this.entityModel.findByIdAndUpdate(new Types.ObjectId(id), updateData, { new: true });
+    
+    // Populate customEntityType if type is custom
+    if (updatedEntity.type === 'custom' && updatedEntity.customEntityTypeId) {
+      const customEntityType = await this.entityTypeModel.findById(updatedEntity.customEntityTypeId);
+      return {
+        ...updatedEntity.toObject(),
+        customEntityType: customEntityType ? {
+          _id: customEntityType._id,
+          title: customEntityType.title,
+          color: customEntityType.color,
+        } : null,
+      } as Entity;
+    }
+
+    return updatedEntity;
   }
 
   async move(id: string, moveEntityDto: MoveEntityDto, userId: string, tenantId: string, userRole: string, userEntityId: string): Promise<Entity> {

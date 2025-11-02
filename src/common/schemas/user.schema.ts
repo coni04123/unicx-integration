@@ -147,6 +147,18 @@ export class User {
   @Prop()
   resetPasswordExpires: Date;
 
+  @Prop({ select: false })
+  emailVerificationToken: string;
+
+  @Prop()
+  emailVerificationExpires: Date;
+
+  @Prop({ default: false })
+  emailVerified: boolean;
+
+  @Prop()
+  pendingEmail: string;
+
   @Prop()
   createdAt: Date;
 

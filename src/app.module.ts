@@ -13,6 +13,7 @@ import { validationSchema } from './config/validation';
 // Modules
 import { AuthModule } from './modules/auth/auth.module';
 import { EntitiesModule } from './modules/entities/entities.module';
+import { EntityTypesModule } from './modules/entity-types/entity-types.module';
 import { UsersModule } from './modules/users/users.module';
 import { EmailModule } from './modules/email/email.module';
 import { WhatsAppModule } from './modules/whatsapp/whatsapp.module';
@@ -89,6 +90,7 @@ import { MetricsModule } from './common/modules/metrics.module';
     // Feature modules
     AuthModule,
     EntitiesModule,
+    EntityTypesModule,
     UsersModule,
     EmailModule,
     WhatsAppModule,

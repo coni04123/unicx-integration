@@ -5,6 +5,7 @@ export enum EntityType {
   ENTITY = 'entity',
   COMPANY = 'company',
   DEPARTMENT = 'department',
+  CUSTOM = 'custom',
 }
 
 export class CreateEntityDto {
@@ -15,6 +16,11 @@ export class CreateEntityDto {
   @ApiProperty({ enum: EntityType, example: EntityType.DEPARTMENT })
   @IsEnum(EntityType)
   type: EntityType;
+
+  @ApiProperty({ example: '507f1f77bcf86cd799439011', required: false })
+  @IsOptional()
+  @IsMongoId()
+  customEntityTypeId?: string;
 
   @ApiProperty({ example: '507f1f77bcf86cd799439011', required: false })
   @IsOptional()
@@ -37,6 +43,11 @@ export class UpdateEntityDto {
   @IsOptional()
   @IsEnum(EntityType)
   type?: EntityType;
+
+  @ApiProperty({ example: '507f1f77bcf86cd799439011', required: false })
+  @IsOptional()
+  @IsMongoId()
+  customEntityTypeId?: string;
 
   @ApiProperty({ example: { description: 'Updated description' }, required: false })
   @IsOptional()

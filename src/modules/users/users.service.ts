@@ -186,16 +186,58 @@ export class UsersService {
   }
 
   async findOne(id: string, tenantId: string): Promise<User> {
-    const user = await this.userModel.findOne({
-      _id: new Types.ObjectId(id),
-      isActive: true,
-    }).populate('entity', 'name path type');
-
-    if (!user) {
-      throw new NotFoundException('User not found');
+    // Validate id is provided
+    if (!id) {
+      throw new BadRequestException('User ID is required');
     }
 
-    return user;
+    // Trim whitespace and convert to string
+    const trimmedId = String(id).trim();
+
+    // Validate id is a valid ObjectId format
+    if (!Types.ObjectId.isValid(trimmedId)) {
+      this.logger.error(`Invalid user ID format: "${trimmedId}" (original: "${id}", type: ${typeof id}, length: ${trimmedId.length})`);
+      throw new BadRequestException(`Invalid user ID format. Please log out and log back in to refresh your authentication token. Received: "${trimmedId}"`);
+    }
+
+    try {
+      const query: any = {
+        _id: new Types.ObjectId(trimmedId),
+        isActive: true,
+      };
+
+      // Only filter by tenantId if provided and valid (SystemAdmin has no tenantId)
+      const trimmedTenantId = tenantId ? String(tenantId).trim() : '';
+      if (trimmedTenantId && trimmedTenantId !== '' && Types.ObjectId.isValid(trimmedTenantId)) {
+        query.tenantId = new Types.ObjectId(trimmedTenantId);
+      }
+
+      let user = await this.userModel.findOne(query).populate('entity', 'name path type');
+
+      // If user not found and we filtered by tenantId, try without tenantId filter
+      // This handles SystemAdmin users who might not have a tenantId
+      if (!user && trimmedTenantId && trimmedTenantId !== '') {
+        const fallbackQuery: any = {
+          _id: new Types.ObjectId(trimmedId),
+          isActive: true,
+        };
+        this.logger.debug(`User not found with tenantId filter, trying without tenantId: ${trimmedTenantId}`);
+        user = await this.userModel.findOne(fallbackQuery).populate('entity', 'name path type');
+      }
+
+      if (!user) {
+        this.logger.error(`User not found with ID: ${trimmedId}, tenantId: ${trimmedTenantId || 'none'}`);
+        throw new NotFoundException('User not found');
+      }
+
+      return user;
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      this.logger.error(`Error finding user with ID ${trimmedId}:`, error);
+      throw new BadRequestException(`Failed to find user: ${error.message}`);
+    }
   }
 
   async findByPhoneNumber(phoneNumber: string, tenantId: string): Promise<User> {
@@ -219,7 +261,24 @@ export class UsersService {
   }
 
   async update(id: string, updateUserDto: UpdateUserDto, updatedBy: string, tenantId: string): Promise<User> {
-    const user = await this.findOne(id, tenantId);
+    // Validate id is provided
+    if (!id) {
+      throw new BadRequestException('User ID is required');
+    }
+
+    // Trim whitespace and convert to string
+    const trimmedId = String(id).trim();
+
+    // Validate id is a valid ObjectId format
+    if (!Types.ObjectId.isValid(trimmedId)) {
+      this.logger.error(`Invalid user ID format in update: "${trimmedId}" (original: "${id}", type: ${typeof id})`);
+      throw new BadRequestException(`Invalid user ID format: ${trimmedId}`);
+    }
+
+    // Trim tenantId if provided
+    const trimmedTenantId = tenantId ? String(tenantId).trim() : '';
+
+    const user = await this.findOne(trimmedId, trimmedTenantId);
 
     const updateData: any = {
       ...updateUserDto,
@@ -233,6 +292,32 @@ export class UsersService {
       }
       const parsedPhone = parsePhoneNumber(updateUserDto.phoneNumber);
       updateData.phoneNumber = parsedPhone.format('E.164');
+    }
+
+    // If email is being updated, check if it's different and handle verification
+    if (updateUserDto.email && updateUserDto.email !== user.email) {
+      // Check if new email already exists
+      const existingUser = await this.userModel.findOne({
+        email: updateUserDto.email,
+        _id: { $ne: new Types.ObjectId(trimmedId) },
+        isActive: true,
+      });
+
+      if (existingUser) {
+        throw new BadRequestException('Email already exists');
+      }
+
+      // Generate verification token
+      const crypto = require('crypto');
+      const verificationToken = crypto.randomBytes(32).toString('hex');
+      const verificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+
+      // Store pending email and verification token
+      updateData.pendingEmail = updateUserDto.email;
+      updateData.emailVerificationToken = verificationToken;
+      updateData.emailVerificationExpires = verificationExpires;
+      // Don't update email yet - wait for verification
+      delete updateData.email;
     }
 
     // If entity is being updated, validate and update path
@@ -255,7 +340,34 @@ export class UsersService {
       updateData.password = await this.authService.hashPassword(updateUserDto.password);
     }
 
-    return this.userModel.findByIdAndUpdate(id, updateData, { new: true });
+    const updatedUser = await this.userModel.findByIdAndUpdate(new Types.ObjectId(trimmedId), updateData, { new: true });
+
+    if (!updatedUser) {
+      throw new NotFoundException('User not found after update');
+    }
+
+    // If email was changed, send verification email
+    if (updateUserDto.email && updateUserDto.email !== user.email) {
+      try {
+        const frontendUrl = process.env.FRONTEND_URL || 'https://localhost:3000';
+        const verificationLink = `${frontendUrl}/verify-email?token=${updateData.emailVerificationToken}&userId=${trimmedId}`;
+        
+        await this.emailService.sendEmailVerificationEmail(
+          updateData.pendingEmail,
+          {
+            firstName: updatedUser.firstName,
+            lastName: updatedUser.lastName,
+            verificationLink,
+            expiryHours: 24,
+          }
+        );
+      } catch (error) {
+        this.logger.error(`Failed to send email verification email: ${error.message}`);
+        // Don't throw error - email update was saved, just verification email failed
+      }
+    }
+
+    return updatedUser;
   }
 
   async inviteUser(inviteUserDto: InviteUserDto, invitedBy: string, retryCount: number = 0): Promise<User> {
@@ -729,6 +841,91 @@ export class UsersService {
    * @param tenantId - The tenant ID
    * @returns Object containing the new QR code data
    */
+  async verifyEmail(token: string, userId: string): Promise<User> {
+    const user = await this.userModel.findOne({
+      _id: new Types.ObjectId(userId),
+      emailVerificationToken: token,
+      isActive: true,
+    });
+
+    if (!user) {
+      throw new BadRequestException('Invalid or expired verification token');
+    }
+
+    // Check if token is expired
+    if (user.emailVerificationExpires && user.emailVerificationExpires < new Date()) {
+      throw new BadRequestException('Verification token has expired');
+    }
+
+    // Check if there's a pending email
+    if (!user.pendingEmail) {
+      throw new BadRequestException('No pending email verification');
+    }
+
+    // Check if pending email already exists for another user
+    const existingUser = await this.userModel.findOne({
+      email: user.pendingEmail,
+      _id: { $ne: new Types.ObjectId(userId) },
+      isActive: true,
+    });
+
+    if (existingUser) {
+      throw new BadRequestException('Email already exists');
+    }
+
+    // Update email and clear verification fields
+    const updatedUser = await this.userModel.findByIdAndUpdate(
+      userId,
+      {
+        email: user.pendingEmail,
+        emailVerified: true,
+        pendingEmail: null,
+        emailVerificationToken: null,
+        emailVerificationExpires: null,
+      },
+      { new: true }
+    );
+
+    return updatedUser;
+  }
+
+  async resendEmailVerification(userId: string): Promise<void> {
+    const user = await this.findOne(userId, '');
+
+    if (!user.pendingEmail) {
+      throw new BadRequestException('No pending email verification');
+    }
+
+    // Check if token is expired, regenerate if needed
+    let verificationToken = user.emailVerificationToken;
+    let verificationExpires = user.emailVerificationExpires;
+
+    if (!verificationToken || !verificationExpires || verificationExpires < new Date()) {
+      const crypto = require('crypto');
+      verificationToken = crypto.randomBytes(32).toString('hex');
+      verificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+
+      await this.userModel.findByIdAndUpdate(userId, {
+        emailVerificationToken: verificationToken,
+        emailVerificationExpires: verificationExpires,
+      });
+    }
+
+    // Send verification email
+    const frontendUrl = process.env.FRONTEND_URL || 'https://localhost:3000';
+    const verificationLink = `${frontendUrl}/verify-email?token=${verificationToken}&userId=${userId}`;
+
+    await this.emailService.sendEmailVerificationEmail(
+      user.pendingEmail,
+      {
+        firstName: user.firstName,
+        lastName: user.lastName,
+        verificationLink,
+        expiryHours: 24,
+      }
+    );
+  }
+
   async regenerateQRCode(userId: string, tenantId: string): Promise<{ qrCode: string; expiresAt: Date; sessionId: string }> {
     // Find the user and verify they have a phone number
     const user = await this.findOne(userId, tenantId);

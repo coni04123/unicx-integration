@@ -134,6 +134,19 @@ export class Message {
   @Prop({ type: String })
   externalSenderPhone: string; // Cleaned phone number for external senders
 
+  // WhatsApp Contact Information
+  @Prop({ type: String })
+  whatsappAvatarUrl: string; // WhatsApp profile picture URL
+
+  @Prop({ type: String })
+  whatsappUsername: string; // WhatsApp username/display name
+
+  @Prop({ type: String })
+  whatsappGroupName: string; // Group name if message is from a group
+
+  @Prop({ default: false })
+  isGroupMessage: boolean; // True if message is from a group
+
   // Flags
   @Prop({ default: false })
   isStarred: boolean;

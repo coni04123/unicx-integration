@@ -349,4 +349,62 @@ export class EmailService {
       throw error;
     }
   }
+
+  async sendEmailVerificationEmail(
+    email: string,
+    data: {
+      firstName: string;
+      lastName: string;
+      verificationLink: string;
+      expiryHours: number;
+      logoUrl?: string;
+      companyName?: string;
+      companyAddress?: string;
+      supportEmail?: string;
+      socialLinks?: {
+        website?: string;
+        linkedin?: string;
+        twitter?: string;
+      };
+    }
+  ): Promise<void> {
+    try {
+      const template = await this.loadTemplate('email-verification');
+      
+      // Ensure required template data is provided with defaults
+      const templateData = {
+        firstName: data.firstName,
+        lastName: data.lastName,
+        verificationLink: data.verificationLink,
+        expiryHours: data.expiryHours,
+        logoUrl: data.logoUrl || `${process.env.FRONTEND_URL}/images/logo.png`,
+        companyName: data.companyName || this.configService.get<string>('email.company.name') || 'UNICX',
+        companyAddress: data.companyAddress || this.configService.get<string>('email.company.address') || '123 Business Street, Tech City',
+        supportEmail: data.supportEmail || this.configService.get<string>('email.support.address') || 'support@unicx.com',
+        socialLinks: {
+          website: data.socialLinks?.website || this.configService.get<string>('email.social.website') || 'https://unicx.com',
+          linkedin: data.socialLinks?.linkedin || this.configService.get<string>('email.social.linkedin'),
+          twitter: data.socialLinks?.twitter || this.configService.get<string>('email.social.twitter')
+        }
+      };
+      
+      const html = template(templateData);
+
+      const fromName = this.configService.get<string>('email.from.name') || templateData.companyName;
+      const fromAddress = this.configService.get<string>('email.from.address');
+      
+      const mailOptions = {
+        from: `"${fromName}" <${fromAddress}>`,
+        to: email,
+        subject: `Verify Your New Email Address - ${templateData.companyName}`,
+        html,
+      };
+
+      await this.transporter.sendMail(mailOptions);
+      this.logger.log(`Email verification email sent to ${email}`);
+    } catch (error) {
+      this.logger.error(`Failed to send email verification email to ${email}:`, error);
+      throw error;
+    }
+  }
 }

@@ -8,6 +8,7 @@ export enum EntityType {
   ENTITY = 'entity',
   COMPANY = 'company',
   DEPARTMENT = 'department',
+  CUSTOM = 'custom',
 }
 
 @Schema({ timestamps: true })
@@ -20,6 +21,9 @@ export class Entity {
 
   @Prop({ required: true, enum: EntityType })
   type: EntityType;
+
+  @Prop({ type: Types.ObjectId, ref: 'EntityType', default: null })
+  customEntityTypeId: Types.ObjectId;
 
   @Prop({ type: Types.ObjectId, ref: 'Entity', default: null })
   parentId: Types.ObjectId;
