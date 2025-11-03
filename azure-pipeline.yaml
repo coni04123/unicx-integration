@@ -4,12 +4,10 @@ trigger:
       - develop
 
 variables:
-  imageName: unicx-integration
-  acrName: unicxacr
+  dockerRegistryServiceConnection: 'unicxacr'
+  imageRepository: 'unicx-integration'
+  dockerfilePath: '$(Build.SourcesDirectory)/Dockerfile'
   tag: '$(Build.BuildId)'
-  # Update this with your actual Azure service connection name
-  # Find it in Azure DevOps: Project Settings > Service connections
-  azureSubscription: '2N5Global'  # Change this to match your service connection name
 
 stages:
   - stage: BuildAndPush
@@ -19,42 +17,64 @@ stages:
         displayName: Build and Push to ACR
         pool:
           vmImage: ubuntu-latest
+
         steps:
-          - checkout: self
-            displayName: Checkout code
+        - checkout: self
+          displayName: Checkout code
+
+        - task: Docker@2
+          displayName: Build and publish image to Azure Container Registry
+          inputs:
+            command: buildAndPush
+            containerRegistry: $(dockerRegistryServiceConnection)
+            repository: $(imageRepository)
+            dockerfile: $(dockerfilePath)
+            tags: |
+              $(tag)
+        # steps:
+        #   - checkout: self
+        #     displayName: Checkout code
           
-          # Option 1: Using Azure CLI (requires service connection)
-          # First, create a service connection in Azure DevOps:
-          # Project Settings > Service connections > New service connection > Azure Resource Manager
-          # Then update the azureSubscription variable above with the connection name
-          - task: AzureCLI@2
-            displayName: Build and Push Docker image to ACR
-            inputs:
-              azureSubscription: $(azureSubscription)
-              scriptType: 'bash'
-              scriptLocation: 'inlineScript'
-              inlineScript: |
-                set -e  # Exit on error
+        #   # Option 1: Using Azure CLI (requires service connection)
+        #   # First, create a service connection in Azure DevOps:
+        #   # Project Settings > Service connections > New service connection > Azure Resource Manager
+        #   # Then update the azureSubscription variable above with the connection name
+        #   - task: AzureCLI@2
+        #     displayName: Build and Push Docker image to ACR
+        #     inputs:
+        #       azureSubscription: $(azureSubscription)
+        #       scriptType: 'bash'
+        #       scriptLocation: 'inlineScript'
+        #       inlineScript: |
+        #         set -e  # Exit on error
                 
-                # Login to Azure Container Registry
-                echo "Logging into Azure Container Registry: $(acrName)..."
-                az acr login --name $(acrName)
+        #         # Display Azure context information
+        #         echo "Azure subscription context:"
+        #         az account show --output table
                 
-                # Verify Dockerfile exists
-                if [ ! -f "Dockerfile" ]; then
-                  echo "Error: Dockerfile not found in current directory: $(pwd)"
-                  ls -la
-                  exit 1
-                fi
+        #         # Verify we're in the correct resource group context
+        #         echo "Checking resource group: $(azureResourceGroup)..."
+        #         az group show --name $(azureResourceGroup) --output table || echo "Warning: Resource group not found or not accessible"
                 
-                echo "Building Docker image..."
-                docker build -f Dockerfile -t $(acrName).azurecr.io/$(imageName):$(tag) -t $(acrName).azurecr.io/$(imageName):latest .
+        #         # Login to Azure Container Registry
+        #         echo "Logging into Azure Container Registry: $(acrName)..."
+        #         az acr login --name $(acrName)
                 
-                echo "Pushing Docker images..."
-                docker push $(acrName).azurecr.io/$(imageName):$(tag)
-                docker push $(acrName).azurecr.io/$(imageName):latest
+        #         # Verify Dockerfile exists
+        #         if [ ! -f "Dockerfile" ]; then
+        #           echo "Error: Dockerfile not found in current directory: $(pwd)"
+        #           ls -la
+        #           exit 1
+        #         fi
                 
-                echo "Build and push completed successfully!"
+        #         echo "Building Docker image..."
+        #         docker build -f Dockerfile -t $(acrName).azurecr.io/$(imageName):$(tag) -t $(acrName).azurecr.io/$(imageName):latest .
+                
+        #         echo "Pushing Docker images..."
+        #         docker push $(acrName).azurecr.io/$(imageName):$(tag)
+        #         docker push $(acrName).azurecr.io/$(imageName):latest
+                
+        #         echo "Build and push completed successfully!"
 
   # - stage: DeployToAKS
   #   displayName: Deploy using Helm
