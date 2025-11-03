@@ -17,16 +17,45 @@ stages:
         pool:
           vmImage: ubuntu-latest
         steps:
-          - task: Docker@2
-            displayName: Build and Push
+          - checkout: self
+            displayName: Checkout code
+          
+          - task: AzureCLI@2
+            displayName: Build and Push Docker image to ACR
             inputs:
-              containerRegistry: 'unicxacr'
-              repository: '$(imageName)'
-              command: 'buildAndPush'
-              Dockerfile: '**/Dockerfile'
-              tags: |
-                $(tag)
-                latest
+              azureSubscription: '2N5 GLOBAL'
+              scriptType: 'bash'
+              scriptLocation: 'inlineScript'
+              inlineScript: |
+                set -e  # Exit on error
+                
+                # Login to Azure Container Registry
+                echo "Logging into Azure Container Registry..."
+                az acr login --name $(acrName)
+                
+                # Navigate to the directory containing the Dockerfile
+                # The pipeline file is in unicx-integration/, so we need to be in that directory
+                if [ -d "unicx-integration" ]; then
+                  cd unicx-integration
+                fi
+                
+                # Verify Dockerfile exists
+                if [ ! -f "Dockerfile" ]; then
+                  echo "Error: Dockerfile not found in current directory: $(pwd)"
+                  ls -la
+                  exit 1
+                fi
+                
+                echo "Building Docker image..."
+                # Build Docker image with both tags
+                docker build -f Dockerfile -t $(acrName).azurecr.io/$(imageName):$(tag) -t $(acrName).azurecr.io/$(imageName):latest .
+                
+                echo "Pushing Docker images..."
+                # Push both tags
+                docker push $(acrName).azurecr.io/$(imageName):$(tag)
+                docker push $(acrName).azurecr.io/$(imageName):latest
+                
+                echo "Build and push completed successfully!"
 
   - stage: DeployToAKS
     displayName: Deploy using Helm
