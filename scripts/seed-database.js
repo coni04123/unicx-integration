@@ -30,7 +30,7 @@ const { AppModule } = require('../dist/app.module');
 const { SYSTEM_ENTITY_ID, SYSTEM_ENTITY_NAME } = require('../dist/common/constants/system-entity');
 
 // Configuration
-const CLEAN_DATABASE = process.env.CLEAN_DATABASE === true;
+const CLEAN_DATABASE = process.env.CLEAN_DATABASE == true;
 
 class DatabaseSeeder {
   constructor(entityModel, userModel, whatsappSessionModel, messageModel, alertModel, healthCheckModel, metricsModel, auditLogModel) {

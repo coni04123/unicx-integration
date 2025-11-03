@@ -29,7 +29,7 @@ export class RolesGuard implements CanActivate {
     if (!hasRole) {
       throw new ForbiddenException('Insufficient permissions');
     }
-
+    
     return true;
   }
 }
