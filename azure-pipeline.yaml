@@ -7,6 +7,9 @@ variables:
   imageName: unicx-integration
   acrName: unicxacr
   tag: '$(Build.BuildId)'
+  # Update this with your actual Azure service connection name
+  # Find it in Azure DevOps: Project Settings > Service connections
+  azureSubscription: '2N5Global'  # Change this to match your service connection name
 
 stages:
   - stage: BuildAndPush
@@ -20,24 +23,22 @@ stages:
           - checkout: self
             displayName: Checkout code
           
+          # Option 1: Using Azure CLI (requires service connection)
+          # First, create a service connection in Azure DevOps:
+          # Project Settings > Service connections > New service connection > Azure Resource Manager
+          # Then update the azureSubscription variable above with the connection name
           - task: AzureCLI@2
             displayName: Build and Push Docker image to ACR
             inputs:
-              azureSubscription: '2N5 GLOBAL'
+              azureSubscription: $(azureSubscription)
               scriptType: 'bash'
               scriptLocation: 'inlineScript'
               inlineScript: |
                 set -e  # Exit on error
                 
                 # Login to Azure Container Registry
-                echo "Logging into Azure Container Registry..."
+                echo "Logging into Azure Container Registry: $(acrName)..."
                 az acr login --name $(acrName)
-                
-                # Navigate to the directory containing the Dockerfile
-                # The pipeline file is in unicx-integration/, so we need to be in that directory
-                if [ -d "unicx-integration" ]; then
-                  cd unicx-integration
-                fi
                 
                 # Verify Dockerfile exists
                 if [ ! -f "Dockerfile" ]; then
@@ -47,11 +48,9 @@ stages:
                 fi
                 
                 echo "Building Docker image..."
-                # Build Docker image with both tags
                 docker build -f Dockerfile -t $(acrName).azurecr.io/$(imageName):$(tag) -t $(acrName).azurecr.io/$(imageName):latest .
                 
                 echo "Pushing Docker images..."
-                # Push both tags
                 docker push $(acrName).azurecr.io/$(imageName):$(tag)
                 docker push $(acrName).azurecr.io/$(imageName):latest
                 
