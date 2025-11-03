@@ -57,38 +57,38 @@ stages:
                 
                 echo "Build and push completed successfully!"
 
-  - stage: DeployToAKS
-    displayName: Deploy using Helm
-    dependsOn: BuildAndPush
-    condition: succeeded()
-    jobs:
-      - deployment: Deploy
-        displayName: Helm Upgrade/Install
-        environment: 'aks-prod'
-        pool:
-          vmImage: ubuntu-latest
-        strategy:
-          runOnce:
-            deploy:
-              steps:
-                - task: HelmInstaller@1
-                  inputs:
-                    helmVersionToInstall: 'latest'
+  # - stage: DeployToAKS
+  #   displayName: Deploy using Helm
+  #   dependsOn: BuildAndPush
+  #   condition: succeeded()
+  #   jobs:
+  #     - deployment: Deploy
+  #       displayName: Helm Upgrade/Install
+  #       environment: 'aks-prod'
+  #       pool:
+  #         vmImage: ubuntu-latest
+  #       strategy:
+  #         runOnce:
+  #           deploy:
+  #             steps:
+  #               - task: HelmInstaller@1
+  #                 inputs:
+  #                   helmVersionToInstall: 'latest'
 
-                - task: HelmDeploy@0
-                  displayName: Helm upgrade
-                  inputs:
-                    connectionType: 'Azure Resource Manager'
-                    azureSubscription: '2N5 GLOBAL'
-                    azureResourceGroup: 'unicx-dev'
-                    kubernetesCluster: 'unicxdev-aks-kubernetes'
-                    command: 'upgrade'
-                    chartType: 'FilePath'
-                    chartPath: 'deployment/integration-chart'
-                    releaseName: 'unicx'
-                    valueFile: 'deployment/integration-chart/values.yaml'
-                    overrideValues: |
-                      image.repository=$(acrName).azurecr.io/$(imageName)
-                      image.tag=$(tag)
-                      replicaCount=2
-                    install: true
+  #               - task: HelmDeploy@0
+  #                 displayName: Helm upgrade
+  #                 inputs:
+  #                   connectionType: 'Azure Resource Manager'
+  #                   azureSubscription: '2N5 GLOBAL'
+  #                   azureResourceGroup: 'unicx-dev'
+  #                   kubernetesCluster: 'unicxdev-aks-kubernetes'
+  #                   command: 'upgrade'
+  #                   chartType: 'FilePath'
+  #                   chartPath: 'deployment/integration-chart'
+  #                   releaseName: 'unicx'
+  #                   valueFile: 'deployment/integration-chart/values.yaml'
+  #                   overrideValues: |
+  #                     image.repository=$(acrName).azurecr.io/$(imageName)
+  #                     image.tag=$(tag)
+  #                     replicaCount=2
+  #                   install: true
