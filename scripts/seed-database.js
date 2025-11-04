@@ -29,9 +29,6 @@ const { AppModule } = require('../dist/app.module');
 // Import System Entity constants
 const { SYSTEM_ENTITY_ID, SYSTEM_ENTITY_NAME } = require('../dist/common/constants/system-entity');
 
-// Configuration
-const CLEAN_DATABASE = process.env.CLEAN_DATABASE == true;
-
 class DatabaseSeeder {
   constructor(entityModel, userModel, whatsappSessionModel, messageModel) {
     this.entityModel = entityModel;
@@ -43,9 +40,7 @@ class DatabaseSeeder {
   async seed() {
     console.log('🌱 Starting database seeding...');
     
-    if (CLEAN_DATABASE) {
-      await this.cleanDatabase();
-    }
+    await this.cleanDatabase();
 
     const stats = {
       entities: 0,
@@ -175,9 +170,7 @@ async function main() {
   console.log('🚀 UNICX Integration Database Seeder');
   console.log('=====================================');
   
-  if (CLEAN_DATABASE) {
-    console.log('⚠️  CLEAN MODE: Will delete all existing data');
-  }
+  console.log('⚠️  CLEAN MODE: Will delete all existing data');
 
   try {
     // Create NestJS application context

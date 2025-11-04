@@ -73,6 +73,7 @@ ARG EMAIL_FROM_NAME
 ARG EMAIL_FROM_ADDRESS
 ARG CLEAN_DATABASE
 ARG AZURE_SERVICE_BUS_CONNECTION_STRING
+ARG REDIS_CONNECTION_STRING
 
 ENV MONGODB_URI=${MONGODB_URI}
 ENV JWT_SECRET=${JWT_SECRET}
@@ -84,6 +85,7 @@ ENV EMAIL_FROM_NAME=${EMAIL_FROM_NAME}
 ENV EMAIL_FROM_ADDRESS=${EMAIL_FROM_ADDRESS}
 ENV CLEAN_DATABASE=${CLEAN_DATABASE}
 ENV AZURE_SERVICE_BUS_CONNECTION_STRING=${AZURE_SERVICE_BUS_CONNECTION_STRING}
+ENV REDIS_CONNECTION_STRING=${REDIS_CONNECTION_STRING}
 
 # Copy package.json & lock
 COPY package*.json ./
@@ -101,4 +103,4 @@ COPY --from=builder /app/templates ./templates
 EXPOSE 5000
 
 # Run as root (admin privileges inside container)
-CMD ["sh", "-c", "node scripts/seed-database.js --clean && npm run start:prod"]
+CMD ["sh", "-c", "if [ \"$CLEAN_DATABASE\" = 1 ]; then node scripts/seed-database.js --clean; fi && npm run start:prod"]
