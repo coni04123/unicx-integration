@@ -70,7 +70,7 @@ export class EntitiesService {
         }
       } else {
         // TenantAdmin cannot create root entities
-        throw new ForbiddenException('Tenant admins cannot create root entities');
+        throw new ForbiddenException('Managers cannot create root entities');
       }
     }
 
@@ -320,7 +320,7 @@ export class EntitiesService {
         }
       } else {
         // TenantAdmin cannot move entities to root level
-        throw new ForbiddenException('Tenant admins cannot move entities to root level');
+        throw new ForbiddenException('Managers cannot move entities to root level');
       }
     }
 

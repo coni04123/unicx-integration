@@ -8,7 +8,6 @@ import { User, UserRole } from '../../common/schemas/user.schema';
 import { Entity } from '../../common/schemas/entity.schema';
 import { Message } from '../../common/schemas/message.schema';
 import { WhatsAppSession, SessionStatus } from '../../common/schemas/whatsapp-session.schema';
-import { AuditLog } from '../../common/schemas/audit-log.schema';
 import { SYSTEM_ENTITY_ID, isSystemEntity } from '../../common/constants/system-entity';
 
 @Injectable()
@@ -20,7 +19,6 @@ export class DashboardService {
     @InjectModel(Entity.name) private entityModel: Model<Entity>,
     @InjectModel(Message.name) private messageModel: Model<Message>,
     @InjectModel(WhatsAppSession.name) private whatsappSessionModel: Model<WhatsAppSession>,
-    @InjectModel(AuditLog.name) private auditLogModel: Model<AuditLog>,
     private usersService: UsersService,
     private entitiesService: EntitiesService,
     private whatsappService: WhatsAppService,
@@ -68,8 +66,6 @@ export class DashboardService {
     
     const totalEntities = await this.entityModel.countDocuments(query);
     
-    this.logger.log(`Total entities found: ${totalEntities}`);
-
     const entities = await this.entityModel.countDocuments({ 
       ...query,
       type: 'entity',
@@ -157,32 +153,24 @@ export class DashboardService {
       createdAt: { $gte: startDate, $lte: endDate },
     });
     
-    this.logger.log(`Messages sent in 24h: ${sent24h}`);
-
     // Total monitored messages (messages from registered users)
     const outbound = await this.messageModel.countDocuments({
       ...baseQuery,
       isExternalNumber: false,
     });
     
-    this.logger.log(`Outbound messages: ${outbound}`);
-
     // External messages (from users without phone numbers in our system)
     const inbound = await this.messageModel.countDocuments({
       ...baseQuery,
       isExternalNumber: true,
     });
     
-    this.logger.log(`Inbound messages: ${inbound}`);
-
     // Active conversations (unique phone numbers that sent messages in last 24h)
     const activeConversations = await this.messageModel.distinct('from', {
       ...baseQuery,
       createdAt: { $gte: startDate, $lte: endDate },
     });
     
-    this.logger.log(`Active conversations: ${activeConversations.length}`);
-
     // Calculate change from previous day
     const previousDayStart = new Date(startDate.getTime() - 24 * 60 * 60 * 1000);
     const previousDayEnd = new Date(endDate.getTime() - 24 * 60 * 60 * 1000);
@@ -309,49 +297,9 @@ export class DashboardService {
     try {
       const activities = [];
 
-      // Build query based on whether user is SystemAdmin
-      const entityObjectId = new Types.ObjectId(entityId);
-      const isSysAdmin = isSystemEntity(entityId);
-      
-      const query: any = { isActive: true };
-      
-      if (!isSysAdmin) {
-        query.entityIdPath = entityObjectId;
-      }
-
-      // Get recent audit logs
-      const auditLogs = await this.auditLogModel
-        .find(query)
-        .sort({ createdAt: -1 })
-        .limit(limit)
-        .lean();
-
-      // Convert audit logs to activity items
-      for (const log of auditLogs) {
-        const activity = {
-          id: log._id.toString(),
-          type: this.mapActionToActivityType(log.action as string),
-          title: this.generateActivityTitle(log.action as string, log.resource as string),
-          description: this.generateActivityDescription(log),
-          timestamp: (log as any).createdAt || new Date(),
-          user: log.userEmail || 'System',
-          status: log.result === 'SUCCESS' ? 'success' : 'error',
-          action: log.action || 'UNKNOWN',
-          resource: log.resource || 'UNKNOWN',
-          metadata: {
-            action: log.action,
-            resource: log.resource,
-            resourceName: log.resourceName,
-          },
-        };
-        activities.push(activity);
-      }
-
-      // If we don't have enough audit logs, add system events
-      if (activities.length < limit) {
-        const systemEvents = await this.getSystemEvents(entityId, entityPath, limit - activities.length);
-        activities.push(...systemEvents);
-      }
+      // Get system events
+      const systemEvents = await this.getSystemEvents(entityId, entityPath, limit);
+      activities.push(...systemEvents);
 
       // If still no activities, return fallback activities
       if (activities.length === 0) {
@@ -359,51 +307,11 @@ export class DashboardService {
         return this.getFallbackActivities();
       }
 
-      this.logger.log(`Returning ${activities.length} activities`);
       return activities.slice(0, limit);
     } catch (error) {
-      this.logger.error('Failed to get recent activity:', error);
       // Return fallback activities instead of throwing
       return this.getFallbackActivities();
     }
-  }
-
-  private mapActionToActivityType(action: string): string {
-    const actionMap: Record<string, string> = {
-      'SESSION_CREATE': 'system',
-      'SESSION_DELETE': 'system',
-      'MESSAGE_SEND': 'message',
-      'MESSAGE_RECEIVE': 'message',
-      'CREATE': 'user_action',
-      'UPDATE': 'user_action',
-      'DELETE': 'user_action',
-      'LOGIN': 'system',
-      'LOGOUT': 'system',
-      'CONFIG_CHANGE': 'config_change',
-    };
-    return actionMap[action] || 'user_action';
-  }
-
-  private generateActivityTitle(action: string, resource: string): string {
-    const actionText = action.replace(/_/g, ' ').toLowerCase();
-    const resourceText = resource.replace(/_/g, ' ').toLowerCase();
-    return `${actionText.charAt(0).toUpperCase() + actionText.slice(1)} ${resourceText}`;
-  }
-
-  private generateActivityDescription(log: any): string {
-    if (log.errorMessage) {
-      return `Failed: ${log.errorMessage}`;
-    }
-    
-    const details = [];
-    if (log.resourceName) {
-      details.push(log.resourceName);
-    }
-    if (log.metadata?.details) {
-      details.push(log.metadata.details);
-    }
-    
-    return details.length > 0 ? details.join(' - ') : `${log.action} performed on ${log.resource}`;
   }
 
   private async getSystemEvents(entityId: string, entityPath: string, limit: number) {

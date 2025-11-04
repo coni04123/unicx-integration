@@ -1,5 +1,4 @@
 import { Injectable, NotFoundException, BadRequestException, Inject, forwardRef, Logger } from '@nestjs/common';
-import { DLQService } from '../dlq/dlq.service';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { User, RegistrationStatus, UserRole, WhatsAppConnectionStatus } from '../../common/schemas/user.schema';
@@ -7,13 +6,12 @@ import { Entity } from '../../common/schemas/entity.schema';
 import { AuthService } from '../auth/auth.service';
 import { EmailService } from '../email/email.service';
 import { WhatsAppService } from '../whatsapp/whatsapp.service';
-import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { InviteUserDto } from './dto/invite-user.dto';
 import { SYSTEM_ENTITY_ID, isSystemAdmin } from '../../common/constants/system-entity';
 import { BulkInviteUserDto } from './dto/bulk-invite-user.dto';
 import { parsePhoneNumber, isValidPhoneNumber } from 'libphonenumber-js';
-const bcrypt = require('bcryptjs');
+import { randomUUID } from 'crypto';
 
 @Injectable()
 export class UsersService {
@@ -28,76 +26,7 @@ export class UsersService {
     private emailService: EmailService,
     @Inject(forwardRef(() => WhatsAppService))
     private whatsappService: WhatsAppService,
-    private dlqService: DLQService,
   ) {}
-
-  async create(createUserDto: CreateUserDto, createdBy: string): Promise<User> {
-    const { phoneNumber, email, firstName, lastName, entityId, tenantId, role } = createUserDto;
-
-    // Validate E164 phone number only if provided (required for User, optional for TenantAdmin)
-    let e164Phone = null;
-    if (phoneNumber) {
-      if (!isValidPhoneNumber(phoneNumber)) {
-        throw new BadRequestException('Invalid phone number format');
-      }
-      const parsedPhone = parsePhoneNumber(phoneNumber);
-      e164Phone = parsedPhone.format('E.164');
-    } else if (role !== UserRole.TENANT_ADMIN) {
-      // Phone number is required for regular Users
-      throw new BadRequestException('Phone number is required for User role');
-    }
-
-    // Check if user already exists
-    const existingUserQuery: any[] = [{ email }];
-    if (e164Phone) {
-      existingUserQuery.push({ phoneNumber: e164Phone });
-    }
-    
-    const existingUser = await this.userModel.findOne({
-      $or: existingUserQuery,
-    });
-
-    if (existingUser) {
-      throw new BadRequestException('User with this phone number or email already exists');
-    }
-
-    // Validate entity exists
-    const entity = await this.entityModel.findOne({
-      _id: entityId,
-      isActive: true,
-    });
-
-    if (!entity) {
-      throw new NotFoundException('Entity not found');
-    }
-
-    // Generate password hash
-    // const password = await this.authService.hashPassword("tenant123");
-    const password = bcrypt.hashSync('tenant123', 12);
-
-    // Build user data - only include phoneNumber if provided
-    const userData: any = {
-      email,
-      firstName,
-      lastName,
-      password,
-      entityId,
-      entityPath: entity.path,
-      tenantId: entity.tenantId,
-      role: role || UserRole.USER,
-      registrationStatus: RegistrationStatus.REGISTERED,
-      createdBy,
-    };
-    
-    // Only include phoneNumber if it exists (not null/undefined)
-    if (e164Phone) {
-      userData.phoneNumber = e164Phone;
-    }
-
-    const user = new this.userModel(userData);
-
-    return user.save();
-  }
 
   async findAll(tenantId: string, filters?: any): Promise<{ users: User[], total: number, page: number, limit: number, totalPages: number }> {
     const query: any = { isActive: true };
@@ -214,6 +143,8 @@ export class UsersService {
 
       let user = await this.userModel.findOne(query).populate('entity', 'name path type');
 
+      console.log('user', user, query);
+
       // If user not found and we filtered by tenantId, try without tenantId filter
       // This handles SystemAdmin users who might not have a tenantId
       if (!user && trimmedTenantId && trimmedTenantId !== '') {
@@ -296,15 +227,24 @@ export class UsersService {
 
     // If email is being updated, check if it's different and handle verification
     if (updateUserDto.email && updateUserDto.email !== user.email) {
-      // Check if new email already exists
+      // Normalize email to lowercase for comparison
+      const normalizedNewEmail = updateUserDto.email.toLowerCase().trim();
+      
+      // Check if new email already exists in email field OR pendingEmail field
+      // This prevents:
+      // 1. Using an email that's already registered
+      // 2. Using an email that another user is currently trying to change to
       const existingUser = await this.userModel.findOne({
-        email: updateUserDto.email,
         _id: { $ne: new Types.ObjectId(trimmedId) },
         isActive: true,
+        $or: [
+          { email: normalizedNewEmail },
+          { pendingEmail: normalizedNewEmail },
+        ],
       });
 
       if (existingUser) {
-        throw new BadRequestException('Email already exists');
+        throw new BadRequestException('This email address is already in use. Please choose a different email address.');
       }
 
       // Generate verification token
@@ -313,7 +253,7 @@ export class UsersService {
       const verificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
 
       // Store pending email and verification token
-      updateData.pendingEmail = updateUserDto.email;
+      updateData.pendingEmail = normalizedNewEmail;
       updateData.emailVerificationToken = verificationToken;
       updateData.emailVerificationExpires = verificationExpires;
       // Don't update email yet - wait for verification
@@ -370,7 +310,7 @@ export class UsersService {
     return updatedUser;
   }
 
-  async inviteUser(inviteUserDto: InviteUserDto, invitedBy: string, retryCount: number = 0): Promise<User> {
+  async inviteUser(inviteUserDto: InviteUserDto, invitedBy: string): Promise<User> {
     const { phoneNumber, email, firstName, lastName, entityId, tenantId, role } = inviteUserDto;
 
     // Validate E164 phone number only if provided (required for User, optional for TenantAdmin)
@@ -411,7 +351,8 @@ export class UsersService {
     }
 
     // Generate password hash for user
-    const hashedPassword = bcrypt.hashSync('Welcome@123', 12);
+    const randomPassword = randomUUID(); 
+    const hashedPassword = await this.authService.hashPassword(randomPassword);
 
     const newUserId:Types.ObjectId = new Types.ObjectId();
 
@@ -427,7 +368,7 @@ export class UsersService {
       entityPath: entity.path,
       tenantId: entity.tenantId,
       role: role || UserRole.USER,
-      registrationStatus: RegistrationStatus.INVITED,
+      registrationStatus: RegistrationStatus.REGISTERED,
       createdBy: invitedBy,
     };
     
@@ -441,116 +382,79 @@ export class UsersService {
     const savedUser = await user.save();
 
     // Declare qrCodeData at method level
-    let qrCodeData = null;
+    // let qrCodeData = null;
 
     // Create WhatsApp session and send QR code via email (only for users with phone numbers)
     if (e164Phone) {
-        try {
-          const sessionId = `whatsapp-${e164Phone.slice(1)}`;
-          this.logger.log(`Creating WhatsApp session for user: ${sessionId}`);
-          
-          await this.whatsappService.createSession(
-            sessionId,
-            newUserId,
-            invitedBy,
-            entityId,
-            entity.tenantId.toString(),
-          );
-
-      // Try to get QR code
       try {
-        qrCodeData = await this.whatsappService.getQRCode(sessionId);
-        if (qrCodeData) {
-          this.logger.log(`QR code generated for session: ${sessionId}`);
-        }
-      } catch (error) {
-        this.logger.warn(`Failed to get QR code: ${error.message}`);
+        const sessionId = `whatsapp-${e164Phone.slice(1)}`;
+        this.logger.log(`Creating WhatsApp session for user: ${sessionId}`);
         
-        // Send to DLQ for retry
-        await this.dlqService.sendToDLQ(
-          {
-            email,
-            firstName,
-            lastName,
-            entity,
-            sessionId,
-            type: 'user-invitation-qr'
-          },
-          error,
-          {
-            topic: 'user-qr-codes',
-            subscription: 'qr-retry',
-            maxRetries: 3,
-            retryDelay: 60000 // 1 minute
-          }
+        await this.whatsappService.createSession(
+          sessionId,
+          newUserId,
+          invitedBy,
+          entityId,
+          entity.tenantId.toString(),
         );
-        throw error;
-      }
 
-          // Send invitation email with QR code
-          if (qrCodeData) {
-            await this.emailService.sendInvitationEmailWithQR(email, {
-              firstName,
-              lastName,
-              qrCode: qrCodeData.qrCode,
-              sessionId,
-              expiresAt: qrCodeData.expiresAt,
-            });
-            this.logger.log(`Invitation email with QR code sent to ${email}`);
-          } else {
-            // Update WhatsApp connection status to FAILED and send invitation without QR code
-            this.logger.warn(`QR code not generated in time for session: ${sessionId}`);
-            await this.updateWhatsAppConnectionStatus(
-              newUserId.toString(),
-              WhatsAppConnectionStatus.FAILED,
-              entity.tenantId.toString()
-            );
-            await this.emailService.sendInvitationEmail(email, 'invitation', {
-              firstName,
-              lastName,
-              subject: 'Welcome to UNICX - WhatsApp Setup Required',
-              message: 'Your WhatsApp connection could not be established automatically. Please contact support for assistance in setting up your WhatsApp connection.',
-            });
-          }
-        } catch (error) {
-          this.logger.error(`Failed to create WhatsApp session or send email: ${error.message}`, error);
-          // Don't fail user creation if WhatsApp/email fails
-        }
+        // Try to get QR code
+        // try {
+        //   qrCodeData = await this.whatsappService.getQRCode(sessionId);
+        //   if (qrCodeData) {
+        //     this.logger.log(`QR code generated for session: ${sessionId}`);
+        //   }
+        // } catch (error) {
+        //   this.logger.warn(`Failed to get QR code: ${error.message}`);
+        //   throw error;
+        // }
+
+        // Send invitation email with QR code
+        // if (qrCodeData) {
+        //   await this.emailService.sendInvitationEmailWithQR(email, {
+        //     firstName,
+        //     lastName,
+        //     qrCode: qrCodeData.qrCode,
+        //     sessionId,
+        //     expiresAt: qrCodeData.expiresAt,
+        //   });
+        //   this.logger.log(`Invitation email with QR code sent to ${email}`);
+        // } else {
+        //   // Update WhatsApp connection status to FAILED and send invitation without QR code
+        //   this.logger.warn(`QR code not generated in time for session: ${sessionId}`);
+        //   await this.updateWhatsAppConnectionStatus(
+        //     newUserId.toString(),
+        //     WhatsAppConnectionStatus.FAILED,
+        //     entity.tenantId.toString()
+        //   );
+        //   await this.emailService.sendInvitationEmail(email, 'invitation', {
+        //     firstName,
+        //     lastName,
+        //     subject: 'Welcome to 2N5 Global - WhatsApp Setup Required',
+        //     message: 'Your WhatsApp connection could not be established automatically. Please contact support for assistance in setting up your WhatsApp connection.',
+        //   });
+        // }
+      } catch (error) {
+        this.logger.error(`Failed to create WhatsApp session or send email: ${error.message}`, error);
+        // Don't fail user creation if WhatsApp/email fails
+      }
     } else {
       // For TenantAdmin without phone number, send a beautiful admin invitation email
-      this.logger.log(`Sending Tenant Admin invitation to: ${email}`);
+      this.logger.log(`Sending Manager invitation to: ${email}`);
       try {
         await this.emailService.sendInvitationEmail(email, 'tenant-admin-invitation', {
           firstName,
           lastName,
-          subject: 'Welcome to UNICX - Tenant Administrator Access',
-          role: 'Tenant Administrator',
+          subject: 'Welcome to UNICX - Manager Access',
+          role: 'Manager',
+          tempPassword: randomPassword,
           entity: {
             name: entity.name,
-            path: entity.path,
-            type: entity.type
           },
+          logoUrl: process.env.LOGO_URL || 'https://system.2n5global.com/favicon.svg',
           loginUrl: process.env.FRONTEND_URL + '/login',
-          features: [
-            {
-              title: 'User Management',
-              description: 'Invite and manage users within your organization'
-            },
-            {
-              title: 'Entity Structure',
-              description: 'Organize your company structure and departments'
-            },
-            {
-              title: 'Communication Monitoring',
-              description: 'Monitor and analyze WhatsApp communications'
-            },
-            {
-              title: 'Advanced Analytics',
-              description: 'Access detailed reports and analytics'
-            }
-          ],
           supportEmail: process.env.SUPPORT_EMAIL || 'support@unicx.com',
-          companyName: process.env.COMPANY_NAME || 'UNICX',
+          companyName: process.env.COMPANY_NAME || '2N5 Global',
           companyAddress: process.env.COMPANY_ADDRESS || '123 Business Street, Tech City',
           socialLinks: {
             website: process.env.COMPANY_WEBSITE || 'https://unicx.com',
@@ -558,30 +462,9 @@ export class UsersService {
             twitter: process.env.COMPANY_TWITTER
           }
         });
-        this.logger.log(`Tenant Admin invitation email sent to ${email}`);
+        this.logger.log(`Manager invitation email sent to ${email}`);
       } catch (error) {
-        this.logger.error(`Failed to send Tenant Admin invitation email: ${error.message}`, error);
-        
-        // Send to DLQ for retry if not already from DLQ
-        if (retryCount === 0) {
-          await this.dlqService.sendToDLQ(
-            {
-              email,
-              firstName,
-              lastName,
-              entity,
-              type: 'tenant-admin-invitation'
-            },
-            error,
-            {
-              topic: 'user-invitations',
-              subscription: 'invitation-retry',
-              maxRetries: 3,
-              retryDelay: 300000, // 5 minutes
-            }
-          );
-        }
-        // Don't fail user creation if email fails
+        this.logger.error(`Failed to send Manager invitation email: ${error.message}`, error);
       }
     }
 
@@ -709,9 +592,9 @@ export class UsersService {
   }
 
   /**
-   * Check if a user is a System Administrator
+   * Check if a user is a Administrator
    * @param user - The user object to check
-   * @returns true if the user is a System Administrator
+   * @returns true if the user is a Administrator
    */
   isSystemAdmin(user: User): boolean {
     return isSystemAdmin(user);
@@ -723,97 +606,6 @@ export class UsersService {
    */
   getSystemEntityId(): Types.ObjectId {
     return SYSTEM_ENTITY_ID;
-  }
-
-  /**
-   * Process failed invitations from DLQ
-   */
-  /**
-   * Process QR code generation retries from DLQ
-   */
-  async processQRCodeDLQ(): Promise<void> {
-    await this.dlqService.processDLQ(
-      'user-qr-codes',
-      'qr-retry',
-      async (message) => {
-        if (message.type === 'qr-code-regeneration') {
-          // Retry QR code regeneration
-          const { userId, tenantId, sessionId } = message;
-          await this.regenerateQRCode(userId, tenantId);
-        } else if (message.type === 'user-invitation-qr') {
-          // Retry QR code generation for new user
-          const { email, firstName, lastName, entity, sessionId } = message;
-          const qrCodeData = await this.whatsappService.getQRCode(sessionId);
-          if (qrCodeData) {
-            await this.emailService.sendInvitationEmailWithQR(email, {
-              firstName,
-              lastName,
-              qrCode: qrCodeData.qrCode,
-              sessionId,
-              expiresAt: qrCodeData.expiresAt,
-            });
-          }
-        }
-      }
-    );
-  }
-
-  /**
-   * Process invitation email retries from DLQ
-   */
-  async processInvitationDLQ(): Promise<void> {
-    await this.dlqService.processDLQ(
-      'user-invitations',
-      'invitation-retry',
-      async (message) => {
-        const { email, firstName, lastName, entity, type } = message;
-        
-        if (type === 'tenant-admin-invitation') {
-          await this.emailService.sendInvitationEmail(email, type, {
-            firstName,
-            lastName,
-            subject: 'Welcome to UNICX - Tenant Administrator Access',
-            role: 'Tenant Administrator',
-            entity,
-            loginUrl: process.env.FRONTEND_URL + '/login',
-            features: [
-              {
-                title: 'User Management',
-                description: 'Invite and manage users within your organization'
-              },
-              {
-                title: 'Entity Structure',
-                description: 'Organize your company structure and departments'
-              },
-              {
-                title: 'Communication Monitoring',
-                description: 'Monitor and analyze WhatsApp communications'
-              },
-              {
-                title: 'Advanced Analytics',
-                description: 'Access detailed reports and analytics'
-              }
-            ],
-            supportEmail: process.env.SUPPORT_EMAIL || 'support@unicx.com',
-            companyName: process.env.COMPANY_NAME || 'UNICX',
-            companyAddress: process.env.COMPANY_ADDRESS || '123 Business Street, Tech City',
-            socialLinks: {
-              website: process.env.COMPANY_WEBSITE || 'https://unicx.com',
-              linkedin: process.env.COMPANY_LINKEDIN,
-              twitter: process.env.COMPANY_TWITTER
-            }
-          });
-        } else {
-          await this.emailService.sendInvitationEmailWithQR(email, {
-            firstName,
-            lastName,
-            qrCode: message.qrCode,
-            sessionId: message.sessionId,
-            expiresAt: message.expiresAt,
-          });
-        }
-      }
-    );
   }
 
   async searchUsers(query: string, tenantId: string): Promise<User[]> {
@@ -862,22 +654,28 @@ export class UsersService {
       throw new BadRequestException('No pending email verification');
     }
 
-    // Check if pending email already exists for another user
+    // Normalize pending email for comparison
+    const normalizedPendingEmail = user.pendingEmail.toLowerCase().trim();
+    
+    // Check if pending email already exists for another user (in email or pendingEmail field)
     const existingUser = await this.userModel.findOne({
-      email: user.pendingEmail,
       _id: { $ne: new Types.ObjectId(userId) },
       isActive: true,
+      $or: [
+        { email: normalizedPendingEmail },
+        { pendingEmail: normalizedPendingEmail },
+      ],
     });
 
     if (existingUser) {
-      throw new BadRequestException('Email already exists');
+      throw new BadRequestException('This email address is already in use. Please choose a different email address.');
     }
 
     // Update email and clear verification fields
     const updatedUser = await this.userModel.findByIdAndUpdate(
       userId,
       {
-        email: user.pendingEmail,
+        email: normalizedPendingEmail,
         emailVerified: true,
         pendingEmail: null,
         emailVerificationToken: null,
@@ -965,23 +763,6 @@ export class UsersService {
       } catch (error) {
         this.logger.warn(`Failed to get QR code: ${error.message}`);
         
-        // Send to DLQ for retry
-        await this.dlqService.sendToDLQ(
-          {
-            userId,
-            tenantId,
-            sessionId,
-            type: 'qr-code-regeneration'
-          },
-          error,
-          {
-            topic: 'user-qr-codes',
-            subscription: 'qr-retry',
-            maxRetries: 3,
-            retryDelay: 60000 // 1 minute
-          }
-        );
-
         // Update status to failed
         await this.updateWhatsAppConnectionStatus(
           userId,

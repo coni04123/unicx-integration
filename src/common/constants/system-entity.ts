@@ -1,10 +1,10 @@
 import { Types } from 'mongoose';
 
 /**
- * System Entity ID - Special entity for System Administrators
+ * System Entity ID - Special entity for Administrators
  * 
  * This is a well-known ObjectId that represents the special "System" entity
- * that System Administrators belong to. This entity is not part of any tenant
+ * that Administrators belong to. This entity is not part of any tenant
  * and serves as the organizational unit for system-level users.
  * 
  * Usage:
@@ -38,7 +38,7 @@ export function isSystemEntity(entityId: Types.ObjectId | string): boolean {
 }
 
 /**
- * Helper function to check if a user is a System Administrator
+ * Helper function to check if a user is a Administrator
  * @param user - The user object to check
  * @returns true if the user belongs to the System entity
  */

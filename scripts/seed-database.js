@@ -4,8 +4,8 @@
  * Database Seeding Script for UNICX Integration Backend
  * 
  * This script initializes the MongoDB database with minimal seed data:
- * - One special "System" entity (for System Administrators)
- * - One System Administrator user (no tenantId, no phoneNumber, belongs to System entity)
+ * - One special "System" entity (for Administrators)
+ * - One Administrator user (no tenantId, no phoneNumber, belongs to System entity)
  * - Empty collections for other entities and WhatsApp sessions
  * 
  * Usage:
@@ -33,15 +33,11 @@ const { SYSTEM_ENTITY_ID, SYSTEM_ENTITY_NAME } = require('../dist/common/constan
 const CLEAN_DATABASE = process.env.CLEAN_DATABASE == true;
 
 class DatabaseSeeder {
-  constructor(entityModel, userModel, whatsappSessionModel, messageModel, alertModel, healthCheckModel, metricsModel, auditLogModel) {
+  constructor(entityModel, userModel, whatsappSessionModel, messageModel) {
     this.entityModel = entityModel;
     this.userModel = userModel;
     this.whatsappSessionModel = whatsappSessionModel;
     this.messageModel = messageModel;
-    this.alertModel = alertModel;
-    this.healthCheckModel = healthCheckModel;
-    this.metricsModel = metricsModel;
-    this.auditLogModel = auditLogModel;
   }
 
   async seed() {
@@ -55,8 +51,6 @@ class DatabaseSeeder {
       entities: 0,
       users: 0,
       whatsappSessions: 0,
-      metrics: 0,
-      auditLogs: 0,
     };
 
     // Seed system admin user
@@ -76,33 +70,60 @@ class DatabaseSeeder {
       this.userModel.deleteMany({}),
       this.whatsappSessionModel.deleteMany({}),
       this.messageModel.deleteMany({}),
-      this.alertModel.deleteMany({}),
-      this.healthCheckModel.deleteMany({}),
-      this.metricsModel.deleteMany({}),
-      this.auditLogModel.deleteMany({}),
     ]);
 
     // Fix phone number index
     console.log('🔧 Fixing phone number index...');
     try {
-      // Drop old index if it exists
-      await this.userModel.collection.dropIndex('phoneNumber_1');
-      console.log('✅ Dropped old phone number index');
+      // List all indexes to find the phoneNumber index
+      const indexes = await this.userModel.collection.indexes();
+      const phoneNumberIndexes = indexes.filter(idx => 
+        idx.key && idx.key.phoneNumber !== undefined
+      );
+      
+      // Drop all existing phoneNumber indexes
+      for (const index of phoneNumberIndexes) {
+        try {
+          const indexName = index.name || 'phoneNumber_1';
+          await this.userModel.collection.dropIndex(indexName);
+          console.log(`✅ Dropped existing phone number index: ${indexName}`);
+        } catch (dropError) {
+          // Try dropping by key pattern if name doesn't work
+          try {
+            await this.userModel.collection.dropIndex({ phoneNumber: 1 });
+            console.log('✅ Dropped existing phone number index by key pattern');
+          } catch (dropError2) {
+            console.log(`ℹ️  Could not drop index: ${index.name || 'phoneNumber_1'} - ${dropError2.message}`);
+          }
+        }
+      }
+      
+      if (phoneNumberIndexes.length === 0) {
+        console.log('ℹ️  No existing phone number index found');
+      }
     } catch (error) {
-      // Index might not exist, which is fine
-      console.log('ℹ️  No old phone number index to drop');
+      console.log(`ℹ️  Error checking indexes: ${error.message}`);
     }
 
-    // Create new partial unique index
-    await this.userModel.collection.createIndex(
-      { phoneNumber: 1 },
-      { 
-        unique: true, 
-        partialFilterExpression: { phoneNumber: { $type: 'string' } },
-        background: true
+    // Create new partial unique index (matching schema definition)
+    try {
+      await this.userModel.collection.createIndex(
+        { phoneNumber: 1 },
+        { 
+          unique: true,
+          partialFilterExpression: { phoneNumber: { $type: 'string' } },
+          background: true,
+          name: 'phoneNumber_1' // Explicit name to avoid conflicts
+        }
+      );
+      console.log('✅ Created new partial unique index for phone numbers');
+    } catch (createError) {
+      if (createError.code === 86 || createError.codeName === 'IndexKeySpecsConflict') {
+        console.log('ℹ️  Index already exists with correct configuration, skipping creation');
+      } else {
+        throw createError;
       }
-    );
-    console.log('✅ Created new partial unique index for phone numbers');
+    }
     
     console.log('✅ Database cleaned and indexes updated');
   }
@@ -167,21 +188,13 @@ async function main() {
     const userModel = app.get('UserModel');
     const whatsappSessionModel = app.get('WhatsAppSessionModel');
     const messageModel = app.get('MessageModel');
-    const alertModel = app.get('AlertModel');
-    const healthCheckModel = app.get('WhatsAppHealthCheckModel');
-    const metricsModel = app.get('MetricsModel');
-    const auditLogModel = app.get('AuditLogModel');
 
     // Create seeder instance
     const seeder = new DatabaseSeeder(
       entityModel,
       userModel,
       whatsappSessionModel,
-      messageModel,
-      alertModel,
-      healthCheckModel,
-      metricsModel,
-      auditLogModel
+      messageModel
     );
 
     // Run seeding

@@ -1,5 +1,4 @@
 import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
-import { DLQService } from '../dlq/dlq.service';
 import { WhatsAppEventsService } from './whatsapp-events.service';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
@@ -27,7 +26,6 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
     consecutiveFailures: number;
     successRate: number;
     recentChecks: number;
-    alertTriggered: boolean;
   }> = new Map();
 
   constructor(
@@ -40,7 +38,6 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
     private configService: ConfigService,
     private entityService: EntitiesService,
     private storageService: StorageService,
-    private dlqService: DLQService,
     private eventsService: WhatsAppEventsService,
     private emailService: EmailService,
   ) {}
@@ -70,7 +67,7 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
     const isSystemAdmin = entityId === "000000000000000000000001";
     
     if (isSystemAdmin) {
-      this.logger.log("Creating session for System Administrator");
+      this.logger.log("Creating session for Administrator");
       entityIdPath = [entityObjectId]; // System Admin's own entity ID only
     } else {
       // For regular users, get the full entity path
@@ -265,7 +262,6 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
 
       client.on('message', async (message) => {
         try {
-          this.logger.log('This Message', JSON.stringify(message));
           await this.handleIncomingMessage(sessionId, message);
         } catch (error) {
           this.logger.error(`Error handling incoming message for session ${sessionId}:`, error);
@@ -443,23 +439,68 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
       // Check if sender is a registered user (external number detection)
       const cleanedPhoneNumber = this.cleanPhoneNumber(message.from);
       const registeredUser = await this.checkIfRegisteredUser(cleanedPhoneNumber, session.tenantId);
-      const contactInfo = await this.getContactInfo(message);
+      
+      // Get contact info for sender (FROM)
+      const fromContactInfo = await this.getContactInfo(message);
+      
+      // Get contact info for recipient (TO - session owner)
+      const toPhoneNumber = this.getE164FromSession(sessionId);
+      let toContactInfo = null;
+      try {
+        // Get the session owner's contact from WhatsApp
+        const client = this.clients.get(sessionId);
+        if (client) {
+          const toContact = await client.getContactById(toPhoneNumber);
+          if (toContact) {
+            toContactInfo = {
+              name: toContact.pushname || toContact.name || toContact.shortName || toPhoneNumber,
+              phone: toContact.number || toPhoneNumber,
+              avatarUrl: null,
+              username: toContact.pushname || toContact.name || undefined,
+            };
+            try {
+              const profilePicUrl = await toContact.getProfilePicUrl();
+              toContactInfo.avatarUrl = profilePicUrl || undefined;
+            } catch (error) {
+              // Profile picture not available
+            }
+          }
+        }
+      } catch (error) {
+        this.logger.debug(`Failed to get recipient contact info: ${error.message}`);
+      }
+      
+      // Fallback to session user info if contact info not available
+      if (!toContactInfo) {
+        const sessionUser = await this.userModel.findOne({ phoneNumber: toPhoneNumber });
+        toContactInfo = {
+          name: sessionUser ? `${sessionUser.firstName} ${sessionUser.lastName}` : toPhoneNumber,
+          phone: toPhoneNumber,
+          avatarUrl: undefined,
+          username: undefined,
+        };
+      }
       
       const isExternalNumber = !registeredUser;
-      const externalSenderName = isExternalNumber ? contactInfo.name : null;
-      const externalSenderPhone = isExternalNumber ? cleanedPhoneNumber : null;
 
-      this.logger.log(`Message from ${cleanedPhoneNumber}: ${isExternalNumber ? 'EXTERNAL' : 'REGISTERED'} - ${contactInfo.name}`);
+      this.logger.log(`Message from ${cleanedPhoneNumber}: ${isExternalNumber ? 'EXTERNAL' : 'REGISTERED'} - ${fromContactInfo.name}`);
 
       const contact = await message.getContact();
 
       const fromPhoneNumber = this.cleanPhoneNumber(contact.number);
-      const toPhoneNumber = this.getE164FromSession(sessionId);
+      const toPhoneNumberFinal = this.getE164FromSession(sessionId);
 
       // Determine conversation ID - use group name if group, otherwise use phone number
-      const conversationId = contactInfo.isGroup && contactInfo.groupName 
-        ? `group-${contactInfo.groupName}` 
+      const conversationId = fromContactInfo.isGroup && fromContactInfo.groupName 
+        ? `group-${fromContactInfo.groupName}` 
         : message.from;
+
+      // Determine names: use group name if group, otherwise use contact name
+      const fromName = fromContactInfo.isGroup && fromContactInfo.groupName 
+        ? fromContactInfo.groupName 
+        : (fromContactInfo.name || fromPhoneNumber);
+      
+      const toName = toContactInfo.name || toPhoneNumberFinal;
 
       const messageData = {
         _id: new Types.ObjectId(),
@@ -467,7 +508,12 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
         from: message.from,
         to: message.to,
         fromPhoneNumber,
-        toPhoneNumber,
+        toPhoneNumber: toPhoneNumberFinal,
+        // New fields: names and avatars
+        fromName,
+        toName,
+        fromAvatarUrl: fromContactInfo.avatarUrl,
+        toAvatarUrl: toContactInfo.avatarUrl,
         type: this.getMessageType(message.type),
         direction: MessageDirection.INBOUND,
         content: message.body || '',
@@ -481,14 +527,9 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
         tenantId: session.tenantId,
         // External number detection fields
         isExternalNumber,
-        externalSenderName,
-        externalSenderPhone,
-        // WhatsApp contact information
-        whatsappAvatarUrl: contactInfo.avatarUrl,
-        whatsappUsername: contactInfo.username || contactInfo.name,
-        whatsappGroupName: contactInfo.groupName,
-        isGroupMessage: contactInfo.isGroup || false,
-        userId: registeredUser ? registeredUser._id : null,
+        whatsappUsername: fromContactInfo.username || fromContactInfo.name,
+        whatsappGroupName: fromContactInfo.groupName,
+        isGroupMessage: fromContactInfo.isGroup || false,
         metadata: {
           hasMedia: message.hasMedia,
           isForwarded: message.isForwarded,
@@ -501,8 +542,8 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
           quotedMessageFrom: quotedMessage?.from,
           quotedMessageBody: quotedMessage?.body,
           // External number metadata
-          senderContactName: contactInfo.name,
-          senderContactPhone: contactInfo.phone,
+          senderContactName: fromContactInfo.name,
+          senderContactPhone: fromContactInfo.phone,
           isExternalSender: isExternalNumber,
           registeredUserInfo: registeredUser ? {
             firstName: registeredUser.firstName,
@@ -556,16 +597,60 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
         mediaUrl = await this.handleMediaUpload(message);
       }
 
-      // Get contact info for recipient
-      const contactInfo = await this.getContactInfo(message);
+      // Get contact info for recipient (TO)
+      const toContactInfo = await this.getContactInfo(message);
       
+      // Get contact info for sender (FROM - session owner)
       const fromPhoneNumber = this.getE164FromSession(sessionId);
+      let fromContactInfo = null;
+      try {
+        // Get the session owner's contact from WhatsApp
+        const client = this.clients.get(sessionId);
+        if (client) {
+          const fromContact = await client.getContactById(fromPhoneNumber);
+          if (fromContact) {
+            fromContactInfo = {
+              name: fromContact.pushname || fromContact.name || fromContact.shortName || fromPhoneNumber,
+              phone: fromContact.number || fromPhoneNumber,
+              avatarUrl: null,
+              username: fromContact.pushname || fromContact.name || undefined,
+            };
+            try {
+              const profilePicUrl = await fromContact.getProfilePicUrl();
+              fromContactInfo.avatarUrl = profilePicUrl || undefined;
+            } catch (error) {
+              // Profile picture not available
+            }
+          }
+        }
+      } catch (error) {
+        this.logger.debug(`Failed to get sender contact info: ${error.message}`);
+      }
+      
+      // Fallback to session user info if contact info not available
+      if (!fromContactInfo) {
+        const sessionUser = await this.userModel.findOne({ phoneNumber: fromPhoneNumber });
+        fromContactInfo = {
+          name: sessionUser ? `${sessionUser.firstName} ${sessionUser.lastName}` : fromPhoneNumber,
+          phone: fromPhoneNumber,
+          avatarUrl: undefined,
+          username: undefined,
+        };
+      }
+      
       const toPhoneNumber = message.to;
 
       // Determine conversation ID
-      const conversationId = contactInfo.isGroup && contactInfo.groupName 
-        ? `group-${contactInfo.groupName}` 
+      const conversationId = toContactInfo.isGroup && toContactInfo.groupName 
+        ? `group-${toContactInfo.groupName}` 
         : message.to;
+
+      // Determine names: use group name if group, otherwise use contact name
+      const fromName = fromContactInfo.name || fromPhoneNumber;
+      
+      const toName = toContactInfo.isGroup && toContactInfo.groupName 
+        ? toContactInfo.groupName 
+        : (toContactInfo.name || toPhoneNumber);
 
       const messageData = {
         _id: new Types.ObjectId(),
@@ -574,6 +659,11 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
         to: message.to,
         fromPhoneNumber,
         toPhoneNumber,
+        // New fields: names and avatars
+        fromName,
+        toName,
+        fromAvatarUrl: fromContactInfo.avatarUrl,
+        toAvatarUrl: toContactInfo.avatarUrl,
         type: this.getMessageType(message.type),
         direction: MessageDirection.OUTBOUND,
         content: message.body || '',
@@ -585,10 +675,9 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
         entityIdPath: entity.entityIdPath,
         tenantId: session.tenantId,
         // WhatsApp contact information
-        whatsappAvatarUrl: contactInfo.avatarUrl,
-        whatsappUsername: contactInfo.username || contactInfo.name,
-        whatsappGroupName: contactInfo.groupName,
-        isGroupMessage: contactInfo.isGroup || false,
+        whatsappUsername: toContactInfo.username || toContactInfo.name,
+        whatsappGroupName: toContactInfo.groupName,
+        isGroupMessage: toContactInfo.isGroup || false,
         metadata: {
           hasMedia: message.hasMedia,
           isForwarded: message.isForwarded,
@@ -912,7 +1001,6 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
         consecutiveFailures: 0,
         successRate: 100,
         recentChecks: 0,
-        alertTriggered: false,
       };
       this.healthChecks.set(sessionId, healthStatus);
     }
@@ -932,7 +1020,6 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
         healthStatus.lastCheck = new Date();
         healthStatus.recentChecks++;
         healthStatus.successRate = ((healthStatus.recentChecks - healthStatus.consecutiveFailures) / healthStatus.recentChecks) * 100;
-        healthStatus.alertTriggered = healthStatus.consecutiveFailures >= 3;
         this.healthChecks.set(sessionId, healthStatus);
       } catch (error) {
         this.logger.error(`Failed to get client state: ${error.message}`);
@@ -941,7 +1028,6 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
         healthStatus.lastCheck = new Date();
         healthStatus.recentChecks++;
         healthStatus.successRate = ((healthStatus.recentChecks - healthStatus.consecutiveFailures) / healthStatus.recentChecks) * 100;
-        healthStatus.alertTriggered = healthStatus.consecutiveFailures >= 3;
         this.healthChecks.set(sessionId, healthStatus);
       }
     }
@@ -1103,12 +1189,30 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
     const query: any = { isActive: true };
 
     if (filters?.tenantId) query.tenantId = new Types.ObjectId(filters.tenantId);
+    
+    // Entity filter with hierarchy support
     if (filters?.entityId) {
       const entityId = new Types.ObjectId(filters.entityId);
-      // Check if the entity ID is in the entityIdPath array
+      
+      // If userEntityIdPath is provided, filter by hierarchy
+      if (filters?.userEntityIdPath && Array.isArray(filters.userEntityIdPath) && filters.userEntityIdPath.length > 0) {
+        // Include messages where entityId is in the user's path OR where message's entityIdPath includes user's entityId
+        query.$or = [
+          { entityId: { $in: [...filters.userEntityIdPath.map((id: string) => new Types.ObjectId(id)), entityId] } },
+          { entityIdPath: { $in: [entityId] } },
+        ];
+      } else {
+        // Fallback: Check if the entity ID is in the entityIdPath array
       query.entityIdPath = entityId;
+      }
+    } else if (filters?.userEntityId && filters?.userEntityIdPath && Array.isArray(filters.userEntityIdPath) && filters.userEntityIdPath.length > 0) {
+      // If no specific entityId filter but user has entity hierarchy, filter by hierarchy
+      const userEntityId = new Types.ObjectId(filters.userEntityId);
+      query.$or = [
+        { entityId: { $in: [...filters.userEntityIdPath.map((id: string) => new Types.ObjectId(id)), userEntityId] } },
+        { entityIdPath: { $in: [userEntityId] } },
+      ];
     }
-    if (filters?.userId) query.userId = new Types.ObjectId(filters.userId);
     if (filters?.direction) query.direction = filters.direction;
     if (filters?.status) query.status = filters.status;
     if (filters?.type) query.type = filters.type;
@@ -1118,7 +1222,6 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
       query.$or = [
         { fromPhoneNumber: cleanedNumber },
         { toPhoneNumber: cleanedNumber },
-        { externalSenderPhone: cleanedNumber }
       ];
     }
 
@@ -1126,7 +1229,9 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
     if (filters?.from) query.fromPhoneNumber = this.cleanPhoneNumber(filters.from);
     if (filters?.to) query.toPhoneNumber = this.cleanPhoneNumber(filters.to);
     if (filters?.conversationId) query.conversationId = filters.conversationId;
-    if (filters?.isExternal !== undefined) query.isExternalNumber = filters.isExternal === 'true';
+    if (filters?.isExternal !== undefined) {
+      query.isExternalNumber = filters.isExternal === true || filters.isExternal === 'true';
+    }
 
     // Message content search
     if (filters?.messageContent) {
@@ -1149,7 +1254,6 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
 
     const messages = await this.messageModel
       .find(query)
-      .populate('userId', 'firstName lastName email phoneNumber')
       .populate('entityId', 'name path type')
       .sort({ createdAt: -1 })
       .skip(skip)
@@ -1169,7 +1273,7 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
             type: replyToMessage.type,
             mediaUrl: replyToMessage.mediaUrl,
             from: replyToMessage.from,
-            senderName: replyToMessage.metadata?.senderContactName || replyToMessage.from
+            senderName: replyToMessage.fromName || replyToMessage.toName || replyToMessage.metadata?.senderContactName || replyToMessage.from
           };
           msgObj.replyToMessageId = replyToMessage._id;
         }
@@ -1183,8 +1287,8 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
       // Add external tag for frontend
       tags: msg.isExternalNumber ? ['External'] : [],
       // Add display information
-      displayName: msg.externalSenderName || msg.metadata?.senderContactName || 'Unknown',
-      displayPhone: msg.externalSenderPhone || msg.from,
+      displayName: msg.fromName || msg.metadata?.senderContactName || 'Unknown',
+      displayPhone: msg.fromPhoneNumber || msg.from,
     }));
 
     return {
@@ -1196,11 +1300,24 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
-  async getConversations(tenantId: string): Promise<any[]> {
+  async getConversations(tenantId: string, userEntityId?: Types.ObjectId, userEntityIdPath?: Types.ObjectId[]): Promise<any[]> {
     // Build match query - only include tenantId if provided (SystemAdmin has no tenantId)
     const matchQuery: any = { isActive: true };
     if (tenantId && tenantId !== '') {
       matchQuery.tenantId = new Types.ObjectId(tenantId);
+    }
+
+    // Filter by entity hierarchy: managers can see messages from their entities and below
+    if (userEntityId && userEntityIdPath && userEntityIdPath.length > 0) {
+      // Include messages where the entityId is in the user's entity hierarchy path
+      // OR where the message's entityIdPath includes the user's entityId
+      matchQuery.$or = [
+        { entityId: { $in: [...userEntityIdPath, userEntityId] } },
+        { entityIdPath: { $in: [userEntityId] } },
+      ];
+    } else if (userEntityId) {
+      // Fallback: if no path, just filter by entityId
+      matchQuery.entityId = userEntityId;
     }
 
     const conversations = await this.messageModel.aggregate([
@@ -1223,10 +1340,11 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
           },
           // Add external number detection
           isExternalNumber: { $last: '$isExternalNumber' },
-          externalSenderName: { $last: '$externalSenderName' },
-          externalSenderPhone: { $last: '$externalSenderPhone' },
           // Get WhatsApp contact info from the most recent message
-          whatsappAvatarUrl: { $last: '$whatsappAvatarUrl' },
+          fromName: { $last: '$fromName' },
+          toName: { $last: '$toName' },
+          fromAvatarUrl: { $last: '$fromAvatarUrl' },
+          toAvatarUrl: { $last: '$toAvatarUrl' },
           whatsappUsername: { $last: '$whatsappUsername' },
           whatsappGroupName: { $last: '$whatsappGroupName' },
           isGroupMessage: { $last: '$isGroupMessage' },
@@ -1242,10 +1360,11 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
 
     // Enhance conversation data with display information
     const enhancedConversations = conversations.map(conv => {
-      // Determine display name - prefer group name, then WhatsApp username, then external sender name, then contact name
+      // Determine display name - prefer group name, then fromName/toName, then WhatsApp username, then contact name
       let displayName = conv.whatsappGroupName || 
+                       conv.fromName || 
+                       conv.toName ||
                        conv.whatsappUsername || 
-                       conv.externalSenderName || 
                        conv.contactName || 
                        'Unknown';
       
@@ -1256,7 +1375,10 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
       
       // Determine display phone
       const displayPhone = conv.isGroupMessage ? null : 
-                          (conv.externalSenderPhone || conv.contactPhone || conv.fromPhoneNumber || conv._id);
+                          (conv.fromPhoneNumber || conv.toPhoneNumber || conv.contactPhone || conv._id);
+
+      // Determine avatar URL
+      const avatarUrl = conv.fromAvatarUrl || conv.toAvatarUrl || null;
 
       return {
         ...conv,
@@ -1266,7 +1388,7 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
         // Display information
         displayName,
         displayPhone,
-        avatarUrl: conv.whatsappAvatarUrl || null,
+        avatarUrl,
         // Add external tag for frontend
         tags: conv.isExternalNumber ? ['External'] : [],
       };
@@ -1402,14 +1524,9 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
    * Process failed messages from DLQ
    */
   async processMessageDLQ(): Promise<void> {
-    await this.dlqService.processDLQ(
-      'whatsapp-messages',
-      'message-retry',
-      async (message) => {
-        const { sessionId, to, content, userId, options } = message;
-        // Retry sending the message with incremented retry count
-        // await this.sendMessage(sessionId, to, content, userId, options, (message.retryCount || 0) + 1);
-      }
-    );
+    // This method is no longer needed as DLQService is removed.
+    // If DLQ functionality is still required, it needs to be re-implemented or removed.
+    // For now, we'll just log a message.
+    this.logger.warn('DLQ processing is no longer available as DLQService is removed.');
   }
 }

@@ -1,13 +1,13 @@
 # System Entity Constants
 
-This module provides global constants and helper functions for working with the System entity, which is a special entity that System Administrators belong to.
+This module provides global constants and helper functions for working with the System entity, which is a special entity that Administrators belong to.
 
 ## Overview
 
 The System entity is a special organizational unit that:
 - Has a fixed ObjectId: `000000000000000000000001`
 - Is not part of any tenant (`tenantId: null`)
-- Serves as the organizational entity for System Administrators
+- Serves as the organizational entity for Administrators
 - Allows System Admins to access all data across tenants
 
 ## Usage
@@ -39,17 +39,17 @@ Check if an entity ID matches the System entity.
 // Example usage
 if (isSystemEntity(user.entityId)) {
   // This user belongs to the System entity
-  console.log('User is a System Administrator');
+  console.log('User is a Administrator');
 }
 ```
 
 #### `isSystemAdmin(user: { entityId: Types.ObjectId | string; role?: string }): boolean`
-Check if a user is a System Administrator (belongs to System entity AND has SystemAdmin role).
+Check if a user is a Administrator (belongs to System entity AND has SystemAdmin role).
 
 ```typescript
 // Example usage
 if (isSystemAdmin(user)) {
-  // This user is a System Administrator
+  // This user is a Administrator
   console.log('User has system-wide access');
 }
 ```
@@ -82,7 +82,7 @@ import { SYSTEM_ENTITY_ID, isSystemAdmin } from '../../common/constants/system-e
 
 @Injectable()
 export class UsersService {
-  // Check if a user is a System Administrator
+  // Check if a user is a Administrator
   isSystemAdmin(user: User): boolean {
     return isSystemAdmin(user);
   }
@@ -96,10 +96,10 @@ export class UsersService {
 
 ## Database Queries
 
-### Find System Administrators
+### Find Administrators
 
 ```typescript
-// Find all System Administrators
+// Find all Administrators
 const systemAdmins = await userModel.find({
   entityId: SYSTEM_ENTITY_ID,
   role: 'SystemAdmin',
@@ -136,7 +136,7 @@ function belongsToTenant(user: User, tenantId: string): boolean {
 
 ## Seed Script Usage
 
-The seed script uses these constants to create the System entity and System Administrator:
+The seed script uses these constants to create the System entity and Administrator:
 
 ```javascript
 const { SYSTEM_ENTITY_ID, SYSTEM_ENTITY_NAME, SYSTEM_ENTITY_TYPE } = require('../dist/common/constants/system-entity');
@@ -149,7 +149,7 @@ const systemEntity = {
   // ... other fields
 };
 
-// Create System Administrator
+// Create Administrator
 const systemAdmin = {
   entityId: SYSTEM_ENTITY_ID,
   entityPath: SYSTEM_ENTITY_NAME,

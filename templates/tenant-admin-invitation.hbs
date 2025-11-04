@@ -3,299 +3,252 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Welcome to {{companyName}} - Tenant Administrator Access</title>
+    <title>Manageristrator Invitation - {{companyName}}</title>
     <style>
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
             line-height: 1.6;
-            color: #333;
+            color: #222222;
+            margin: 0;
+            padding: 0;
+            background-color: #f5f5f5;
+        }
+        .email-wrapper {
+            width: 100%;
+            background-color: #f5f5f5;
+            padding: 40px 0;
+        }
+        .email-container {
             max-width: 600px;
             margin: 0 auto;
-            padding: 20px;
-            background-color: #f8fafc;
-        }
-        .container {
             background-color: #ffffff;
-            border-radius: 12px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            overflow: hidden;
+            border: 1px solid #e0e0e0;
         }
         .header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 40px 30px;
-            text-align: center;
+            padding: 30px 40px;
+            border-bottom: 3px solid #14a800;
+            background-color: #ffffff;
         }
-        .header h1 {
-            margin: 0;
-            font-size: 28px;
-            font-weight: 600;
-        }
-        .header p {
-            margin: 10px 0 0 0;
-            font-size: 16px;
-            opacity: 0.9;
+        .logo {
+            max-width: 150px;
+            height: auto;
+            display: block;
         }
         .content {
-            padding: 40px 30px;
+            padding: 40px;
         }
-        .welcome-section {
-            text-align: center;
-            margin-bottom: 30px;
-        }
-        .welcome-section h2 {
-            color: #2d3748;
-            font-size: 24px;
-            margin: 0 0 10px 0;
-        }
-        .welcome-section p {
-            color: #718096;
-            font-size: 16px;
-            margin: 0;
-        }
-        .credentials-box {
-            background-color: #f7fafc;
-            border: 2px solid #e2e8f0;
-            border-radius: 8px;
-            padding: 20px;
-            margin: 30px 0;
-            text-align: center;
-        }
-        .credentials-box h3 {
-            color: #2d3748;
-            margin: 0 0 15px 0;
+        .greeting {
             font-size: 18px;
+            font-weight: 400;
+            color: #222222;
+            margin: 0 0 20px 0;
         }
-        .credential-item {
+        .message {
+            font-size: 15px;
+            color: #555555;
+            line-height: 1.7;
+            margin: 0 0 30px 0;
+        }
+        .info-box {
+            background-color: #f9f9f9;
+            border: 1px solid #e0e0e0;
+            border-left: 3px solid #14a800;
+            border-radius: 4px;
+            padding: 25px;
+            margin: 30px 0;
+        }
+        .info-box-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #222222;
+            margin: 0 0 15px 0;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .info-row {
             display: flex;
             justify-content: space-between;
-            align-items: center;
-            padding: 10px 0;
-            border-bottom: 1px solid #e2e8f0;
+            padding: 12px 0;
+            border-bottom: 1px solid #e8e8e8;
         }
-        .credential-item:last-child {
+        .info-row:last-child {
             border-bottom: none;
         }
-        .credential-label {
-            font-weight: 600;
-            color: #4a5568;
-        }
-        .credential-value {
-            font-family: 'Courier New', monospace;
-            background-color: #edf2f7;
-            padding: 4px 8px;
-            border-radius: 4px;
-            color: #2d3748;
-        }
-        .entity-info {
-            background-color: #f0fff4;
-            border-left: 4px solid #48bb78;
-            padding: 20px;
-            margin: 30px 0;
-            border-radius: 0 8px 8px 0;
-        }
-        .entity-info h3 {
-            color: #22543d;
-            margin: 0 0 10px 0;
-            font-size: 18px;
-        }
-        .entity-details {
-            color: #2f855a;
-        }
-        .features-section {
-            margin: 30px 0;
-        }
-        .features-section h3 {
-            color: #2d3748;
-            font-size: 20px;
-            margin: 0 0 20px 0;
-        }
-        .feature-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 20px;
-        }
-        .feature-item {
-            background-color: #f7fafc;
-            padding: 20px;
-            border-radius: 8px;
-            border-left: 4px solid #667eea;
-        }
-        .feature-item h4 {
-            color: #2d3748;
-            margin: 0 0 8px 0;
-            font-size: 16px;
-        }
-        .feature-item p {
-            color: #718096;
-            margin: 0;
+        .info-label {
             font-size: 14px;
+            color: #666666;
+            font-weight: 400;
         }
-        .cta-section {
+        .info-value {
+            font-size: 14px;
+            color: #222222;
+            font-weight: 500;
+            font-family: 'Courier New', monospace;
+        }
+        .button-container {
             text-align: center;
-            margin: 40px 0;
+            margin: 35px 0;
         }
-        .login-button {
+        .button {
             display: inline-block;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
+            background-color: #14a800;
+            color: #ffffff;
             text-decoration: none;
-            padding: 15px 30px;
-            border-radius: 8px;
-            font-weight: 600;
-            font-size: 16px;
-            transition: transform 0.2s ease;
+            padding: 12px 32px;
+            border-radius: 4px;
+            font-size: 15px;
+            font-weight: 500;
+            letter-spacing: 0.3px;
         }
-        .login-button:hover {
-            transform: translateY(-2px);
+        .button:hover {
+            background-color: #0d7d00;
         }
         .security-notice {
-            background-color: #fff5f5;
-            border: 1px solid #fed7d7;
-            border-radius: 8px;
+            background-color: #f0f9f0;
+            border-left: 3px solid #14a800;
             padding: 20px;
             margin: 30px 0;
         }
-        .security-notice h4 {
-            color: #c53030;
-            margin: 0 0 10px 0;
-            font-size: 16px;
-        }
-        .security-notice p {
-            color: #742a2a;
-            margin: 0;
+        .security-notice-title {
             font-size: 14px;
+            font-weight: 600;
+            color: #222222;
+            margin: 0 0 10px 0;
+        }
+        .security-notice-text {
+            font-size: 14px;
+            color: #555555;
+            line-height: 1.6;
+            margin: 0;
+        }
+        .divider {
+            height: 1px;
+            background-color: #e0e0e0;
+            margin: 30px 0;
         }
         .footer {
-            background-color: #2d3748;
-            color: white;
-            padding: 30px;
-            text-align: center;
+            padding: 30px 40px;
+            background-color: #f9f9f9;
+            border-top: 1px solid #e0e0e0;
         }
-        .footer h4 {
+        .footer-text {
+            font-size: 13px;
+            color: #666666;
+            line-height: 1.6;
             margin: 0 0 15px 0;
-            font-size: 18px;
         }
-        .footer p {
-            margin: 0 0 20px 0;
-            color: #a0aec0;
-            font-size: 14px;
-        }
-        .social-links {
+        .footer-links {
             margin: 20px 0;
         }
-        .social-links a {
-            color: #a0aec0;
+        .footer-links a {
+            color: #14a800;
             text-decoration: none;
-            margin: 0 10px;
-            font-size: 14px;
+            font-size: 13px;
+            margin-right: 20px;
         }
-        .social-links a:hover {
-            color: white;
+        .footer-links a:hover {
+            text-decoration: underline;
         }
-        .company-info {
+        .footer-company {
             font-size: 12px;
-            color: #718096;
+            color: #999999;
             margin-top: 20px;
+            line-height: 1.6;
         }
-        @media (max-width: 600px) {
-            body {
-                padding: 10px;
+        @media only screen and (max-width: 600px) {
+            .email-container {
+                width: 100% !important;
             }
             .header, .content, .footer {
-                padding: 20px;
+                padding: 25px !important;
             }
-            .feature-grid {
-                grid-template-columns: 1fr;
+            .info-row {
+                flex-direction: column;
+            }
+            .info-value {
+                margin-top: 5px;
             }
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <!-- Header -->
-        <div class="header">
-            <h1>{{companyName}}</h1>
-            <p>Tenant Administrator Portal</p>
-        </div>
-
-        <!-- Main Content -->
-        <div class="content">
-            <!-- Welcome Section -->
-            <div class="welcome-section">
-                <h2>Welcome, {{firstName}}!</h2>
-                <p>You've been granted Tenant Administrator access to the {{companyName}} platform.</p>
+    <div class="email-wrapper">
+        <div class="email-container">
+            <!-- Header -->
+            <div class="header">
+                {{#if logoUrl}}
+                <img src="{{logoUrl}}" alt="{{companyName}}" class="logo">
+                {{else}}
+                <div style="font-size: 24px; font-weight: 600; color: #14a800;">{{companyName}}</div>
+                {{/if}}
             </div>
 
-            <!-- Login Credentials -->
-            <div class="credentials-box">
-                <h3>🔐 Your Login Credentials</h3>
-                <div class="credential-item">
-                    <span class="credential-label">Email:</span>
-                    <span class="credential-value">{{email}}</span>
-                </div>
-                <div class="credential-item">
-                    <span class="credential-label">Temporary Password:</span>
-                    <span class="credential-value">{{tempPassword}}</span>
-                </div>
-            </div>
+            <!-- Content -->
+            <div class="content">
+                <p class="greeting">Hi {{firstName}},</p>
+                
+                <p class="message">
+                    You've been granted Manager access to the {{companyName}} platform. Use the credentials below to log in to your account.
+                </p>
 
-            <!-- Entity Information -->
-            <div class="entity-info">
-                <h3>🏢 Your Organization</h3>
-                <div class="entity-details">
-                    <p><strong>Entity:</strong> {{entity.name}}</p>
-                    <p><strong>Type:</strong> {{entity.type}}</p>
-                    <p><strong>Path:</strong> {{entity.path}}</p>
-                </div>
-            </div>
-
-            <!-- Features Section -->
-            <div class="features-section">
-                <h3>🚀 What You Can Do</h3>
-                <div class="feature-grid">
-                    {{#each features}}
-                    <div class="feature-item">
-                        <h4>{{title}}</h4>
-                        <p>{{description}}</p>
+                <!-- Login Credentials -->
+                <div class="info-box">
+                    <div class="info-box-title">Your Login Credentials</div>
+                    <div class="info-row">
+                        <span class="info-label">Email:</span>
+                        <span class="info-value">{{email}}</span>
                     </div>
-                    {{/each}}
+                    <div class="info-row">
+                        <span class="info-label">Temporary Password:</span>
+                        <span class="info-value">{{tempPassword}}</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">Entity:</span>
+                        <span class="info-value">{{entity.name}}</span>
+                    </div>
                 </div>
+
+                <!-- Call to Action -->
+                <div class="button-container">
+                    <a href="{{loginUrl}}" class="button">Access Your Dashboard</a>
+                </div>
+
+                <!-- Security Notice -->
+                <div class="security-notice">
+                    <div class="security-notice-title">Security Notice</div>
+                    <p class="security-notice-text">
+                        For your security, please change your temporary password immediately after your first login. This password will expire in 7 days.
+                    </p>
+                </div>
+
+                <div class="divider"></div>
+
+                <p class="message" style="margin-bottom: 0;">
+                    If you have any questions or need assistance, please don't hesitate to contact our support team.
+                </p>
             </div>
 
-            <!-- Call to Action -->
-            <div class="cta-section">
-                <a href="{{loginUrl}}" class="login-button">Access Your Dashboard</a>
-            </div>
+            <!-- Footer -->
+            <div class="footer">
+                <p class="footer-text">Need help? Contact our support team:</p>
+                
+                <div class="footer-links">
+                    {{#if socialLinks.website}}
+                    <a href="{{socialLinks.website}}">Website</a>
+                    {{/if}}
+                    {{#if socialLinks.linkedin}}
+                    <a href="{{socialLinks.linkedin}}">LinkedIn</a>
+                    {{/if}}
+                    {{#if socialLinks.twitter}}
+                    <a href="{{socialLinks.twitter}}">Twitter</a>
+                    {{/if}}
+                </div>
 
-            <!-- Security Notice -->
-            <div class="security-notice">
-                <h4>🔒 Security Notice</h4>
-                <p>For your security, please change your temporary password immediately after your first login. This password will expire in 7 days.</p>
-            </div>
-        </div>
-
-        <!-- Footer -->
-        <div class="footer">
-            <h4>Need Help?</h4>
-            <p>If you have any questions or need assistance, please don't hesitate to contact our support team.</p>
-            
-            <div class="social-links">
-                {{#if socialLinks.website}}
-                <a href="{{socialLinks.website}}">Website</a>
-                {{/if}}
-                {{#if socialLinks.linkedin}}
-                <a href="{{socialLinks.linkedin}}">LinkedIn</a>
-                {{/if}}
-                {{#if socialLinks.twitter}}
-                <a href="{{socialLinks.twitter}}">Twitter</a>
-                {{/if}}
-            </div>
-
-            <div class="company-info">
-                <p>{{companyName}}<br>
-                {{companyAddress}}</p>
-                <p>Support: <a href="mailto:{{supportEmail}}" style="color: #a0aec0;">{{supportEmail}}</a></p>
+                <div class="footer-company">
+                    {{companyName}}<br>
+                    {{companyAddress}}<br>
+                    Support: <a href="mailto:{{supportEmail}}" style="color: #14a800;">{{supportEmail}}</a>
+                </div>
             </div>
         </div>
     </div>

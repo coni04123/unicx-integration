@@ -9,7 +9,6 @@ import { User, UserSchema } from '../../common/schemas/user.schema';
 import { Entity, EntitySchema } from '../../common/schemas/entity.schema';
 import { Message, MessageSchema } from '../../common/schemas/message.schema';
 import { WhatsAppSession, WhatsAppSessionSchema } from '../../common/schemas/whatsapp-session.schema';
-import { AuditLog, AuditLogSchema } from '../../common/schemas/audit-log.schema';
 
 @Module({
   imports: [
@@ -18,7 +17,6 @@ import { AuditLog, AuditLogSchema } from '../../common/schemas/audit-log.schema'
       { name: Entity.name, schema: EntitySchema },
       { name: Message.name, schema: MessageSchema },
       { name: WhatsAppSession.name, schema: WhatsAppSessionSchema },
-      { name: AuditLog.name, schema: AuditLogSchema },
     ]),
     UsersModule,
     EntitiesModule,

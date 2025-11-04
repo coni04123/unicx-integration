@@ -11,8 +11,7 @@ import { UserRole } from '../../common/schemas/user.schema';
 import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
 import { SYSTEM_ENTITY_ID } from '@/common/constants/system-entity';
-import { Audit } from '../../common/decorators/audit.decorator';
-import { AuditAction, AuditResource } from '../../common/schemas/audit-log.schema';
+import { Types } from 'mongoose';
 
 @ApiTags('WhatsApp')
 @Controller('whatsapp')
@@ -28,7 +27,6 @@ export class WhatsAppController {
   @Post('sessions')
   @Roles(UserRole.SYSTEM_ADMIN, UserRole.TENANT_ADMIN)
   @RequireTenant()
-  @Audit({ action: AuditAction.SESSION_CREATE, resource: AuditResource.WHATSAPP_SESSION })
   @ApiOperation({ summary: 'Create new WhatsApp session and generate QR code' })
   @ApiResponse({ status: 201, description: 'Session created successfully' })
   async createSession(@Request() req) {
@@ -87,7 +85,6 @@ export class WhatsAppController {
 
   @Delete('sessions/:sessionId')
   @Roles(UserRole.SYSTEM_ADMIN, UserRole.TENANT_ADMIN)
-  @Audit({ action: AuditAction.SESSION_DELETE, resource: AuditResource.WHATSAPP_SESSION })
   @ApiOperation({ summary: 'Disconnect WhatsApp session' })
   @ApiResponse({ status: 200, description: 'Session disconnected successfully' })
   async disconnectSession(@Param('sessionId') sessionId: string) {
@@ -101,7 +98,6 @@ export class WhatsAppController {
   // @Post('messages/send')
   // @Roles(UserRole.SYSTEM_ADMIN, UserRole.TENANT_ADMIN)
   // @RequireTenant()
-  // @Audit({ action: AuditAction.MESSAGE_SEND, resource: AuditResource.MESSAGE })
   // @ApiOperation({ summary: 'Send WhatsApp message' })
   // @ApiResponse({ status: 200, description: 'Message sent successfully' })
   // async sendMessage(
@@ -137,10 +133,17 @@ export class WhatsAppController {
       ...query,
     };
 
-    console.log(filters);
-
+    // Add entity hierarchy filtering
     if (query.entityId || req.user.entityId !== SYSTEM_ENTITY_ID.toString()) {
       filters.entityId = query.entityId || req.user.entityId;
+    }
+
+    // Add user entity hierarchy for filtering
+    if (req.user.entityId) {
+      filters.userEntityId = req.user.entityId;
+    }
+    if (req.user.entityIdPath && Array.isArray(req.user.entityIdPath)) {
+      filters.userEntityIdPath = req.user.entityIdPath;
     }
 
     return this.whatsappService.getMessages(filters);
@@ -170,10 +173,16 @@ export class WhatsAppController {
 
   @Get('conversations')
   @RequireTenant()
-  @ApiOperation({ summary: 'Get list of conversations with WhatsApp contact info. Conversations with unregistered numbers include "External" tag.' })
+  @ApiOperation({ summary: 'Get list of conversations with WhatsApp contact info. Conversations with unregistered numbers include "External" tag. Filtered by entity hierarchy.' })
   @ApiResponse({ status: 200, description: 'Conversations retrieved successfully. External conversations include tags: ["External"]' })
   async getConversations(@Request() req) {
-    return this.whatsappService.getConversations(req.user.tenantId || '');
+    const userEntityId = req.user.entityId ? new Types.ObjectId(req.user.entityId) : undefined;
+    const userEntityIdPath = req.user.entityIdPath || [];
+    return this.whatsappService.getConversations(
+      req.user.tenantId || '',
+      userEntityId,
+      userEntityIdPath.map((id: string) => new Types.ObjectId(id))
+    );
   }
 
   @Get('conversations/:conversationId/messages')

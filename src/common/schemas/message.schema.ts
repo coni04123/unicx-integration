@@ -49,8 +49,18 @@ export class Message {
   @Prop({ required: true })
   toPhoneNumber: string; // Cleaned E164 format
 
-  @Prop({ type: Types.ObjectId, ref: 'User' })
-  userId: Types.ObjectId; // Link to user if exists
+  // WhatsApp Contact Names and Avatars
+  @Prop({ type: String })
+  fromName: string; // WhatsApp account name or group name (not ID nor phone)
+
+  @Prop({ type: String })
+  toName: string; // WhatsApp account name or group name (not ID nor phone)
+
+  @Prop({ type: String })
+  fromAvatarUrl: string; // WhatsApp account avatar URL
+
+  @Prop({ type: String })
+  toAvatarUrl: string; // WhatsApp account avatar URL
 
   // Message Content
   @Prop({ required: true, enum: MessageType })
@@ -129,16 +139,6 @@ export class Message {
   isExternalNumber: boolean; // True if sender is not a registered user
 
   @Prop({ type: String })
-  externalSenderName: string; // Display name for external senders (from WhatsApp contact info)
-
-  @Prop({ type: String })
-  externalSenderPhone: string; // Cleaned phone number for external senders
-
-  // WhatsApp Contact Information
-  @Prop({ type: String })
-  whatsappAvatarUrl: string; // WhatsApp profile picture URL
-
-  @Prop({ type: String })
   whatsappUsername: string; // WhatsApp username/display name
 
   @Prop({ type: String })
@@ -179,7 +179,6 @@ MessageSchema.index({ fromPhoneNumber: 1, toPhoneNumber: 1 });
 MessageSchema.index({ from: 1, to: 1 });
 MessageSchema.index({ tenantId: 1, isActive: 1 });
 MessageSchema.index({ entityId: 1 });
-MessageSchema.index({ userId: 1 });
 MessageSchema.index({ conversationId: 1 });
 MessageSchema.index({ campaignId: 1 });
 MessageSchema.index({ status: 1, tenantId: 1 });
@@ -188,5 +187,4 @@ MessageSchema.index({ type: 1, tenantId: 1 });
 MessageSchema.index({ createdAt: -1 });
 MessageSchema.index({ sentAt: -1 });
 MessageSchema.index({ isExternalNumber: 1, tenantId: 1 });
-MessageSchema.index({ externalSenderPhone: 1 });
 

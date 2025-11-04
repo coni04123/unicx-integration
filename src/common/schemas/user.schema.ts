@@ -174,7 +174,6 @@ UserSchema.index(
   { phoneNumber: 1 },
   { 
     unique: true,
-    sparse: true,
     partialFilterExpression: { phoneNumber: { $type: 'string' } }
   }
 );

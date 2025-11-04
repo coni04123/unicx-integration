@@ -1,5 +1,4 @@
 import { Module, forwardRef } from '@nestjs/common';
-import { DLQModule } from '../dlq/dlq.module';
 import { DatabaseModule } from '../../common/database/database.module';
 import { AuthModule } from '../auth/auth.module';
 import { EmailModule } from '../email/email.module';
@@ -13,7 +12,6 @@ import { UsersController } from './users.controller';
     AuthModule, 
     EmailModule,
     forwardRef(() => WhatsAppModule),
-    DLQModule,
   ],
   controllers: [UsersController],
   providers: [UsersService],

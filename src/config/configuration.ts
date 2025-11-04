@@ -6,6 +6,32 @@ export const configuration = () => ({
       dlqSubscription: process.env.AZURE_SERVICE_BUS_DLQ_SUBSCRIPTION || 'dlq-processor',
     },
   },
+  
+  // Redis Cache - supports both connection string and individual config
+  redis: (() => {
+    const connectionString = process.env.REDIS_CONNECTION_STRING;
+    
+    if (connectionString) {
+      // Parse Azure Redis connection string: host:port,password=xxx,ssl=True,abortConnect=False
+      return {
+        connectionString,
+        // Also provide parsed values for compatibility
+        host: process.env.REDIS_HOST || 'localhost',
+        port: parseInt(process.env.REDIS_PORT, 10) || 6380,
+        password: process.env.REDIS_PASSWORD || '',
+        ttl: parseInt(process.env.REDIS_DEFAULT_TTL, 10) || 3600,
+        database: parseInt(process.env.REDIS_DATABASE, 10) || 0,
+      };
+    }
+    
+    return {
+      host: process.env.REDIS_HOST || 'localhost',
+      port: parseInt(process.env.REDIS_PORT, 10) || 6379,
+      password: process.env.REDIS_PASSWORD || '',
+      ttl: parseInt(process.env.REDIS_DEFAULT_TTL, 10) || 3600,
+      database: parseInt(process.env.REDIS_DATABASE, 10) || 0,
+    };
+  })(),
   // Application
   app: {
     name: process.env.APP_NAME || 'UNICX Integration',

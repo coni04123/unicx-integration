@@ -36,7 +36,8 @@ export class EmailService {
       
       // Ensure required template data is provided
       const defaultTemplateData = {
-        companyName: 'UNICX',
+        email,
+        companyName: '2N5 Global',
         loginUrl: process.env.FRONTEND_URL || 'https://localhost:3000/login',
         supportEmail: this.configService.get<string>('email.from.address'),
         ...templateData
@@ -141,37 +142,6 @@ export class EmailService {
     }
   }
 
-  async sendWelcomeEmail(email: string, userData: Record<string, any>): Promise<void> {
-    try {
-      const template = await this.loadTemplate('welcome');
-      
-      // Ensure required template data is provided
-      const templateData = {
-        companyName: 'UNICX',
-        dashboardUrl: process.env.FRONTEND_URL || 'https://localhost:3000/dashboard',
-        ...userData
-      };
-      
-      const html = template(templateData);
-
-      const fromName = this.configService.get<string>('email.from.name') || 'UNICX';
-      const fromAddress = this.configService.get<string>('email.from.address');
-      
-      const mailOptions = {
-        from: `"${fromName}" <${fromAddress}>`,
-        to: email,
-        subject: `Welcome to ${templateData.companyName}`,
-        html,
-      };
-
-      await this.transporter.sendMail(mailOptions);
-      this.logger.log(`Welcome email sent to ${email}`);
-    } catch (error) {
-      this.logger.error(`Failed to send welcome email to ${email}:`, error);
-      throw error;
-    }
-  }
-
   private async loadTemplate(templateId: string): Promise<handlebars.TemplateDelegate> {
     try {
       const templatePath = path.join(__dirname, '..', '..', '..', 'templates', `${templateId}.hbs`);
@@ -219,7 +189,7 @@ export class EmailService {
         firstName: data.firstName,
         lastName: data.lastName,
         email: email,
-        companyName: 'UNICX',
+        companyName: '2N5 Global',
         loginUrl: process.env.FRONTEND_URL || 'https://localhost:3000/login',
         qrCodeImage: `data:image/png;base64,${data.qrCode}`,
         expiryHours: Math.ceil((data.expiresAt.getTime() - Date.now()) / (1000 * 60 * 60)),

@@ -24,8 +24,8 @@ import { StorageModule } from './modules/storage/storage.module';
 import { DatabaseModule } from './common/database/database.module';
 import { SecurityModule } from './common/security/security.module';
 import { HealthModule } from './common/health/health.module';
-import { AuditModule } from './common/modules/audit.module';
-import { MetricsModule } from './common/modules/metrics.module';
+import { CacheModule } from './common/cache/cache.module';
+import { MessagingModule } from './common/messaging/messaging.module';
 
 @Module({
   imports: [
@@ -84,8 +84,8 @@ import { MetricsModule } from './common/modules/metrics.module';
     DatabaseModule,
     SecurityModule,
     HealthModule,
-    AuditModule,
-    MetricsModule,
+    CacheModule,
+    MessagingModule,
 
     // Feature modules
     AuthModule,
