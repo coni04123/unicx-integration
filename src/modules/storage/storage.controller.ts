@@ -1,6 +1,6 @@
-import { Controller, Post, Get, Delete, Param, Body, UseGuards, UseInterceptors, UploadedFile, BadRequestException, Res, StreamableFile } from '@nestjs/common';
+import { Controller, Post, Get, Delete, Param, Body, Query, UseGuards, UseInterceptors, UploadedFile, BadRequestException, Res, StreamableFile } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { ApiTags, ApiOperation, ApiResponse, ApiConsumes, ApiBearerAuth } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiConsumes, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { StorageService, StorageUploadResult } from './storage.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
@@ -119,21 +119,34 @@ export class MediaController {
   @Get('proxy/:key(*)')
   @Roles(UserRole.SYSTEM_ADMIN, UserRole.TENANT_ADMIN, UserRole.USER)
   @ApiOperation({ summary: 'Proxy media file from cloud storage' })
+  @ApiQuery({ name: 'filename', required: false, description: 'Original filename for Content-Disposition header' })
   @ApiResponse({ status: 200, description: 'Media file served successfully' })
   @ApiResponse({ status: 400, description: 'Bad request' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 403, description: 'Forbidden' })
   @ApiResponse({ status: 404, description: 'File not found' })
-  async proxyMedia(@Param('key') key: string, @Res() res: any) {
+  async proxyMedia(
+    @Param('key') key: string,
+    @Query('filename') filename: string | undefined,
+    @Res() res: any,
+  ) {
     try {
       const result = await this.storageService.downloadFile(key);
       
-      res.set({
+      const headers: Record<string, string> = {
         'Content-Type': result.contentType,
         'Content-Length': result.size.toString(),
         'Cache-Control': 'public, max-age=31536000', // Cache for 1 year
-      });
+      };
+
+      // If filename is provided, set Content-Disposition header for download with original name
+      if (filename) {
+        // Encode filename for Content-Disposition (RFC 2231 format for UTF-8 support)
+        const encodedFilename = encodeURIComponent(filename);
+        headers['Content-Disposition'] = `attachment; filename="${filename}"; filename*=UTF-8''${encodedFilename}`;
+      }
       
+      res.set(headers);
       return res.send(result.buffer);
     } catch (error) {
       throw new BadRequestException('Failed to retrieve media file');

@@ -8,6 +8,8 @@ variables:
   imageRepository: 'unicx-integration'
   dockerfilePath: '$(Build.SourcesDirectory)/Dockerfile'
   tag: '$(Build.BuildId)'
+  poolName: 'UNICX-DEV'
+
 
 stages:
   - stage: BuildAndPush
@@ -16,7 +18,7 @@ stages:
       - job: DockerBuild
         displayName: Build and Push to ACR
         pool:
-          vmImage: ubuntu-latest
+          name: $(poolName)
 
         steps:
         - checkout: self

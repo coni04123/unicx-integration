@@ -4,7 +4,7 @@ import { Model, Types } from 'mongoose';
 import { UsersService } from '../users/users.service';
 import { EntitiesService } from '../entities/entities.service';
 import { WhatsAppService } from '../whatsapp/whatsapp.service';
-import { User, UserRole } from '../../common/schemas/user.schema';
+import { User, UserRole, RegistrationStatus } from '../../common/schemas/user.schema';
 import { Entity } from '../../common/schemas/entity.schema';
 import { Message } from '../../common/schemas/message.schema';
 import { WhatsAppSession, SessionStatus } from '../../common/schemas/whatsapp-session.schema';
@@ -26,15 +26,11 @@ export class DashboardService {
 
   async getDashboardStats(entityId: string, entityPath: string) {
     try {
-      const now = new Date();
-      const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-      const lastWeek = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-
       // Get entity statistics
       const entityStats = await this.getEntityStats(entityId);
       
       // Get message statistics
-      const messageStats = await this.getMessageStats(entityId, lastWeek, now);
+      const messageStats = await this.getMessageStats(entityId);
       
       // Get user statistics
       const userStats = await this.getUserStats(entityId);
@@ -65,7 +61,7 @@ export class DashboardService {
     // For SystemAdmin, no entityIdPath filter means they see all entities
     
     const totalEntities = await this.entityModel.countDocuments(query);
-    
+
     const entities = await this.entityModel.countDocuments({ 
       ...query,
       type: 'entity',
@@ -130,7 +126,7 @@ export class DashboardService {
     };
   }
 
-  private async getMessageStats(entityId: string, startDate: Date, endDate: Date) {
+  private async getMessageStats(entityId: string) {
     // Convert entityId string to ObjectId
     const entityObjectId = new Types.ObjectId(entityId);
     const isSysAdmin = isSystemEntity(entityId);
@@ -142,7 +138,11 @@ export class DashboardService {
       baseQuery.entityIdPath = entityObjectId;
     }
 
-    // Total messages in last 24 hours (both inbound and outbound)
+    const now = new Date();
+    const last24hStart = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const last30dStart = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const last365dStart = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
+
      const total = await this.messageModel.countDocuments({
       ...baseQuery,
     });
@@ -150,30 +150,42 @@ export class DashboardService {
     // Total messages in last 24 hours (both inbound and outbound)
     const sent24h = await this.messageModel.countDocuments({
       ...baseQuery,
-      createdAt: { $gte: startDate, $lte: endDate },
+      createdAt: { $gte: last24hStart, $lte: now },
     });
     
+    // Total messages in last 30 days
+    const sent30d = await this.messageModel.countDocuments({
+      ...baseQuery,
+      createdAt: { $gte: last30dStart, $lte: now },
+    });
+
+    // Total messages in last 365 days
+    const sent365d = await this.messageModel.countDocuments({
+      ...baseQuery,
+      createdAt: { $gte: last365dStart, $lte: now },
+    });
+
     // Total monitored messages (messages from registered users)
     const outbound = await this.messageModel.countDocuments({
       ...baseQuery,
       isExternalNumber: false,
     });
-    
+
     // External messages (from users without phone numbers in our system)
     const inbound = await this.messageModel.countDocuments({
       ...baseQuery,
       isExternalNumber: true,
     });
-    
+
     // Active conversations (unique phone numbers that sent messages in last 24h)
     const activeConversations = await this.messageModel.distinct('from', {
       ...baseQuery,
-      createdAt: { $gte: startDate, $lte: endDate },
+      createdAt: { $gte: last24hStart, $lte: now },
     });
-    
+
     // Calculate change from previous day
-    const previousDayStart = new Date(startDate.getTime() - 24 * 60 * 60 * 1000);
-    const previousDayEnd = new Date(endDate.getTime() - 24 * 60 * 60 * 1000);
+    const previousDayStart = new Date(last24hStart.getTime() - 24 * 60 * 60 * 1000);
+    const previousDayEnd = new Date(now.getTime() - 24 * 60 * 60 * 1000);
     const sentPreviousDay = await this.messageModel.countDocuments({
       ...baseQuery,
       createdAt: { $gte: previousDayStart, $lte: previousDayEnd },
@@ -183,6 +195,8 @@ export class DashboardService {
     return {
       total,
       sent24h,
+      sent30d,
+      sent365d,
       outbound,
       inbound,
       activeConversations: activeConversations.length,
@@ -212,6 +226,25 @@ export class DashboardService {
       ...baseQuery,
       phoneNumber: { $exists: true, $ne: null },
     });
+
+    // Count connected users: users who have WhatsApp sessions with status READY
+    const sessionQuery: any = {
+      status: SessionStatus.READY,
+      isActive: true,
+      userId: { $exists: true, $ne: null },
+    };
+
+    if (!isSysAdmin) {
+      sessionQuery.entityIdPath = entityObjectId;
+    }
+
+    // Get distinct user IDs that have active WhatsApp sessions
+    const connectedUserIds = await this.whatsappSessionModel.countDocuments(sessionQuery);
+
+    // Count how many of these users match the base query (role and entity constraints)
+    let connectedUsers = connectedUserIds;
+
+    const unconnectedUsers = Math.max(totalUsers - connectedUsers, 0);
     
     // Calculate change from last week
     const lastWeek = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
@@ -229,6 +262,8 @@ export class DashboardService {
     return {
       total: totalUsers,
       monitored: monitoredUsers,
+      connected: connectedUsers,
+      unconnected: unconnectedUsers,
       change: {
         value: Math.abs(change),
         period: 'vs last week',
@@ -299,7 +334,7 @@ export class DashboardService {
 
       // Get system events
       const systemEvents = await this.getSystemEvents(entityId, entityPath, limit);
-      activities.push(...systemEvents);
+        activities.push(...systemEvents);
 
       // If still no activities, return fallback activities
       if (activities.length === 0) {
