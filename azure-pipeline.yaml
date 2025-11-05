@@ -8,7 +8,7 @@ variables:
   imageRepository: 'unicx-integration'
   dockerfilePath: '$(Build.SourcesDirectory)/Dockerfile'
   tag: '$(Build.BuildId)'
-  poolName: 'UNICX-DEV'
+  poolName: 'UNICXDEV'
 
 
 stages:
