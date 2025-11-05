@@ -610,8 +610,6 @@ export class EntitiesService {
       isActive: true,
     });
 
-    console.log('targetEntity', targetEntity)
-
     if (!targetEntity) {
       return false;
     }

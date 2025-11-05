@@ -47,7 +47,6 @@ export class DashboardController {
       const entityId = req.user['entityId'];
       const entityPath = req.user['entityPath'];
       const activityLimit = limit ? parseInt(limit) : 10;
-      console.log(entityId, entityPath, activityLimit);
       const activities = await this.dashboardService.getRecentActivity(entityId, entityPath, activityLimit);
       
       return {

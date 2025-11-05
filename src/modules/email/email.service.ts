@@ -314,7 +314,6 @@ export class EmailService {
       const info = await this.transporter.sendMail(mailOptions);
       this.logger.log(`Test email sent successfully to ${toEmail}. Message ID: ${info.messageId}`);
     } catch (error) {
-      console.log('error', error);
       this.logger.error(`Failed to send test email to ${toEmail}:`, error);
       throw error;
     }

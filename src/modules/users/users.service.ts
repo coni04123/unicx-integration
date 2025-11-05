@@ -143,8 +143,6 @@ export class UsersService {
 
       let user = await this.userModel.findOne(query).populate('entity', 'name path type');
 
-      console.log('user', user, query);
-
       // If user not found and we filtered by tenantId, try without tenantId filter
       // This handles SystemAdmin users who might not have a tenantId
       if (!user && trimmedTenantId && trimmedTenantId !== '') {
@@ -225,39 +223,24 @@ export class UsersService {
       updateData.phoneNumber = parsedPhone.format('E.164');
     }
 
-    // If email is being updated, check if it's different and handle verification
+    // If email is being updated, check if it's different
     if (updateUserDto.email && updateUserDto.email !== user.email) {
       // Normalize email to lowercase for comparison
       const normalizedNewEmail = updateUserDto.email.toLowerCase().trim();
       
-      // Check if new email already exists in email field OR pendingEmail field
-      // This prevents:
-      // 1. Using an email that's already registered
-      // 2. Using an email that another user is currently trying to change to
+      // Check if new email already exists
       const existingUser = await this.userModel.findOne({
         _id: { $ne: new Types.ObjectId(trimmedId) },
         isActive: true,
-        $or: [
-          { email: normalizedNewEmail },
-          { pendingEmail: normalizedNewEmail },
-        ],
+        email: normalizedNewEmail,
       });
 
       if (existingUser) {
         throw new BadRequestException('This email address is already in use. Please choose a different email address.');
       }
 
-      // Generate verification token
-      const crypto = require('crypto');
-      const verificationToken = crypto.randomBytes(32).toString('hex');
-      const verificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
-
-      // Store pending email and verification token
-      updateData.pendingEmail = normalizedNewEmail;
-      updateData.emailVerificationToken = verificationToken;
-      updateData.emailVerificationExpires = verificationExpires;
-      // Don't update email yet - wait for verification
-      delete updateData.email;
+      // Directly update the email (no verification required)
+      updateData.email = normalizedNewEmail;
     }
 
     // If entity is being updated, validate and update path
@@ -286,26 +269,26 @@ export class UsersService {
       throw new NotFoundException('User not found after update');
     }
 
-    // If email was changed, send verification email
-    if (updateUserDto.email && updateUserDto.email !== user.email) {
-      try {
-        const frontendUrl = process.env.FRONTEND_URL || 'https://localhost:3000';
-        const verificationLink = `${frontendUrl}/verify-email?token=${updateData.emailVerificationToken}&userId=${trimmedId}`;
+    // // If email was changed, send verification email
+    // if (updateUserDto.email && updateUserDto.email !== user.email) {
+    //   try {
+    //     const frontendUrl = process.env.FRONTEND_URL || 'https://localhost:3000';
+    //     const verificationLink = `${frontendUrl}/verify-email?token=${updateData.emailVerificationToken}&userId=${trimmedId}`;
         
-        await this.emailService.sendEmailVerificationEmail(
-          updateData.pendingEmail,
-          {
-            firstName: updatedUser.firstName,
-            lastName: updatedUser.lastName,
-            verificationLink,
-            expiryHours: 24,
-          }
-        );
-      } catch (error) {
-        this.logger.error(`Failed to send email verification email: ${error.message}`);
-        // Don't throw error - email update was saved, just verification email failed
-      }
-    }
+    //     await this.emailService.sendEmailVerificationEmail(
+    //       updateData.pendingEmail,
+    //       {
+    //         firstName: updatedUser.firstName,
+    //         lastName: updatedUser.lastName,
+    //         verificationLink,
+    //         expiryHours: 24,
+    //       }
+    //     );
+    //   } catch (error) {
+    //     this.logger.error(`Failed to send email verification email: ${error.message}`);
+    //     // Don't throw error - email update was saved, just verification email failed
+    //   }
+    // }
 
     return updatedUser;
   }
@@ -788,12 +771,6 @@ export class UsersService {
         WhatsAppConnectionStatus.CONNECTING,
         tenantId
       );
-
-      console.log({
-        qrCode: qrCodeData.qrCode,
-        expiresAt: qrCodeData.expiresAt,
-        sessionId
-      });
 
       return {
         qrCode: qrCodeData.qrCode,
