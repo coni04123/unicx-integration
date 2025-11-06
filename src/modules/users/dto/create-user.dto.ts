@@ -139,3 +139,78 @@ export class UpdateRegistrationStatusDto {
   @IsEnum(RegistrationStatus)
   status: RegistrationStatus;
 }
+
+export class BulkUploadUserDto {
+  @ApiProperty({ example: '+1234567890' })
+  @IsString()
+  phoneNumber: string;
+
+  @ApiProperty({ example: 'user@example.com', required: false })
+  @IsOptional()
+  @IsEmail()
+  email?: string;
+
+  @ApiProperty({ example: 'John' })
+  @IsString()
+  firstName: string;
+
+  @ApiProperty({ example: 'Doe' })
+  @IsString()
+  lastName: string;
+
+  @ApiProperty({ 
+    example: ['Entity 1', 'Entity 2', 'Company 1', 'Department'],
+    description: 'Array of entity names representing the path from root to target entity',
+    type: [String]
+  })
+  @IsArray()
+  @IsString({ each: true })
+  entityPathNames: string[];
+}
+
+export class BulkUploadUsersDto {
+  @ApiProperty({ type: [BulkUploadUserDto] })
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => BulkUploadUserDto)
+  users: BulkUploadUserDto[];
+
+  @ApiProperty({ example: 'tenant-123' })
+  @IsString()
+  tenantId: string;
+}
+
+export class BulkUploadManagerDto {
+  @ApiProperty({ example: 'user@example.com' })
+  @IsEmail()
+  email: string;
+
+  @ApiProperty({ example: 'John' })
+  @IsString()
+  firstName: string;
+
+  @ApiProperty({ example: 'Doe' })
+  @IsString()
+  lastName: string;
+
+  @ApiProperty({ 
+    example: ['2N5 Global', 'Executive Office'],
+    description: 'Array of entity names representing the path from root to target entity',
+    type: [String]
+  })
+  @IsArray()
+  @IsString({ each: true })
+  entityPathNames: string[];
+}
+
+export class BulkUploadManagersDto {
+  @ApiProperty({ type: [BulkUploadManagerDto] })
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => BulkUploadManagerDto)
+  managers: BulkUploadManagerDto[];
+
+  @ApiProperty({ example: 'tenant-123' })
+  @IsString()
+  tenantId: string;
+}

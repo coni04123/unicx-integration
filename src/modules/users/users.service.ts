@@ -8,10 +8,11 @@ import { EmailService } from '../email/email.service';
 import { WhatsAppService } from '../whatsapp/whatsapp.service';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { InviteUserDto } from './dto/invite-user.dto';
-import { SYSTEM_ENTITY_ID, isSystemAdmin } from '../../common/constants/system-entity';
+import { SYSTEM_ENTITY_ID, isSystemAdmin, isSystemEntity } from '../../common/constants/system-entity';
 import { BulkInviteUserDto } from './dto/bulk-invite-user.dto';
 import { parsePhoneNumber, isValidPhoneNumber } from 'libphonenumber-js';
 import { randomUUID } from 'crypto';
+import { isEmpty } from 'class-validator';
 
 @Injectable()
 export class UsersService {
@@ -463,6 +464,7 @@ export class UsersService {
     for (const userData of users) {
       try {
         await this.inviteUser({ ...userData, tenantId }, invitedBy);
+
         success++;
       } catch (error) {
         failed++;
@@ -474,6 +476,325 @@ export class UsersService {
     }
 
     return { success, failed, errors };
+  }
+
+  async bulkUploadUsers(bulkUploadDto: any, invitedBy: string): Promise<{ success: number; failed: number; errors: any[]; details: any[] }> {
+    const { users, tenantId } = bulkUploadDto;
+    let success = 0;
+    let failed = 0;
+    const errors: any[] = [];
+    const details: any[] = [];
+
+    let query: any = {
+      isActive: true,
+    };
+
+    if (!isEmpty(tenantId))
+      query.tenantId = new Types.ObjectId(tenantId);
+
+    // Fetch all entities for this tenant to build a name-to-entity map
+    const allEntities = await this.entityModel.find(query).lean();
+
+    // Build a map of entity paths for quick lookup
+    const entityPathMap = new Map<string, any>();
+    allEntities.forEach(entity => {
+      // Store entities by their name for lookup
+      if (!entityPathMap.has(entity.name)) {
+        entityPathMap.set(entity.name, []);
+      }
+      entityPathMap.get(entity.name).push(entity);
+    });
+
+    for (const userData of users) {
+      try {
+        let {phoneNumber} = userData;
+        const { email, firstName, lastName, entityPathNames } = userData;
+
+        // Validate phone number
+        if (!phoneNumber) {
+          throw new Error('Phone number is required');
+        }
+
+        if (String(phoneNumber)[0] !== '+')
+          phoneNumber = '+' + phoneNumber;
+
+        if (!isValidPhoneNumber(phoneNumber)) {
+          throw new Error(`Invalid phone number format: ${phoneNumber}`);
+        }
+
+        const parsedPhone = parsePhoneNumber(phoneNumber);
+        const e164Phone = parsedPhone.format('E.164');
+
+        // Check if user already exists
+        const existingUser = await this.userModel.findOne({
+          phoneNumber: e164Phone,
+          isActive: true,
+        });
+
+        if (existingUser) {
+          throw new Error(`User with phone number ${e164Phone} already exists`);
+        }
+
+        // Resolve entity from path names
+        let targetEntity = null;
+        if (entityPathNames && entityPathNames.length > 0) {
+          // Filter out empty strings
+          const cleanPathNames = entityPathNames.filter(name => name && name.trim() !== '');
+          
+          if (cleanPathNames.length > 0) {
+            // Start from root (no parent) and traverse down
+            let currentParentId = null;
+            
+            for (let i = 0; i < cleanPathNames.length; i++) {
+              const entityName = cleanPathNames[i].trim();
+              const candidates = entityPathMap.get(entityName) || [];
+
+              // Find entity with matching parent
+              const matchingEntity = candidates.find(e => {
+                if (currentParentId === null) {
+                  return e.parentId === null || e.parentId === undefined;
+                } else {
+                  return e.parentId && e.parentId.toString() === currentParentId.toString();
+                }
+              });
+              
+              if (!matchingEntity) {
+                throw new Error(`Entity "${entityName}" not found in path: ${cleanPathNames.join(' > ')}`);
+              }
+              
+              // Move to next level
+              currentParentId = matchingEntity._id;
+              
+              // If this is the last element, this is our target entity
+              if (i === cleanPathNames.length - 1) {
+                targetEntity = matchingEntity;
+              }
+            }
+          }
+        }
+
+        if (!targetEntity) {
+          throw new Error('Could not resolve entity from path names');
+        }
+
+        // Create user
+        const tempPassword = randomUUID();
+        const hashedPassword = await this.authService.hashPassword(tempPassword);
+
+        const newUser = await this.userModel.create({
+          _id: new Types.ObjectId(),
+          phoneNumber: e164Phone,
+          email: email || undefined,
+          firstName,
+          lastName,
+          password: hashedPassword,
+          entityId: targetEntity._id,
+          entityIdPath: targetEntity.entityIdPath || [targetEntity._id],
+          tenantId: tenantId ? new Types.ObjectId(tenantId) : targetEntity.entityId,
+          role: UserRole.USER,
+          entityPath: 'test',
+          registrationStatus: RegistrationStatus.INVITED,
+          isActive: true,
+          invitedBy: new Types.ObjectId(invitedBy),
+          invitedAt: new Date(),
+        });
+
+        // Send invitation email if email provided
+        if (email) {
+          try {
+            this.logger.log(`User ${e164Phone} created successfully. Email: ${email}`);
+
+            try {
+              const sessionId = `whatsapp-${e164Phone.slice(1)}`;
+              this.logger.log(`Creating WhatsApp session for user: ${sessionId}`);
+              
+              await this.whatsappService.createSession(
+                sessionId,
+                newUser._id,
+                invitedBy,
+                targetEntity._id,
+                targetEntity.tenant_id,
+              );
+            } catch (error) {
+              this.logger.error(`Failed to create WhatsApp session or send email: ${error.message}`, error);
+            }
+
+          } catch (error) {
+            this.logger.warn(`Failed to send invitation email to ${email}: ${error.message}`);
+          }
+        }
+
+        success++;
+        details.push({
+          phoneNumber: e164Phone,
+          email,
+          firstName,
+          lastName,
+          entityName: targetEntity.name,
+          entityPath: targetEntity.path,
+          status: 'success',
+        });
+      } catch (error) {
+        failed++;
+        errors.push({
+          user: userData,
+          error: error.message,
+        });
+        details.push({
+          ...userData,
+          status: 'failed',
+          error: error.message,
+        });
+      }
+    }
+
+    return { success, failed, errors, details };
+  }
+
+  async bulkUploadManagers(bulkUploadDto: any, invitedBy: string): Promise<{ success: number; failed: number; errors: any[]; details: any[] }> {
+    const { managers, tenantId } = bulkUploadDto;
+    let success = 0;
+    let failed = 0;
+    const errors: any[] = [];
+    const details: any[] = [];
+
+    let query: any = {
+      isActive: true,
+    };
+
+    if (!isEmpty(tenantId))
+      query.tenantId = new Types.ObjectId(tenantId);
+
+    // Fetch all entities for this tenant to build a name-to-entity map
+    const allEntities = await this.entityModel.find(query).lean();
+
+    // Build a map of entity paths for quick lookup
+    const entityPathMap = new Map<string, any>();
+    allEntities.forEach(entity => {
+      // Store entities by their name for lookup
+      if (!entityPathMap.has(entity.name)) {
+        entityPathMap.set(entity.name, []);
+      }
+      entityPathMap.get(entity.name).push(entity);
+    });
+
+    for (const managerData of managers) {
+      try {
+        const { email, firstName, lastName, entityPathNames } = managerData;
+
+        // Validate email
+        if (!email) {
+          throw new Error('Email is required');
+        }
+
+        // Normalize email to lowercase
+        const normalizedEmail = email.toLowerCase().trim();
+
+        // Check if manager already exists
+        const existingManager = await this.userModel.findOne({
+          email: normalizedEmail,
+          isActive: true,
+        });
+
+        if (existingManager) {
+          throw new Error(`Manager with email ${normalizedEmail} already exists`);
+        }
+
+        // Resolve entity from path names
+        let targetEntity = null;
+        if (entityPathNames && entityPathNames.length > 0) {
+          // Filter out empty strings
+          const cleanPathNames = entityPathNames.filter(name => name && name.trim() !== '');
+          
+          if (cleanPathNames.length > 0) {
+            // Start from root (no parent) and traverse down
+            let currentParentId = null;
+            
+            for (let i = 0; i < cleanPathNames.length; i++) {
+              const entityName = cleanPathNames[i].trim();
+              const candidates = entityPathMap.get(entityName) || [];
+
+              // Find entity with matching parent
+              const matchingEntity = candidates.find(e => {
+                if (currentParentId === null) {
+                  return e.parentId === null || e.parentId === undefined;
+                } else {
+                  return e.parentId && e.parentId.toString() === currentParentId.toString();
+                }
+              });
+              
+              if (!matchingEntity) {
+                throw new Error(`Entity "${entityName}" not found in path: ${cleanPathNames.join(' > ')}`);
+              }
+              
+              // Move to next level
+              currentParentId = matchingEntity._id;
+              
+              // If this is the last element, this is our target entity
+              if (i === cleanPathNames.length - 1) {
+                targetEntity = matchingEntity;
+              }
+            }
+          }
+        }
+
+        if (!targetEntity) {
+          throw new Error('Could not resolve entity from path names');
+        }
+
+        // Create manager
+        const tempPassword = randomUUID();
+        const hashedPassword = await this.authService.hashPassword(tempPassword);
+
+        const newManager = await this.userModel.create({
+          _id: new Types.ObjectId(),
+          email: normalizedEmail,
+          firstName,
+          lastName,
+          password: hashedPassword,
+          entityId: targetEntity._id,
+          entityIdPath: targetEntity.entityIdPath || [targetEntity._id],
+          tenantId: tenantId ? new Types.ObjectId(tenantId) : targetEntity.entityId,
+          role: UserRole.TENANT_ADMIN,
+          entityPath: 'test',
+          registrationStatus: RegistrationStatus.REGISTERED,
+          isActive: true,
+          invitedBy: new Types.ObjectId(invitedBy),
+          invitedAt: new Date(),
+        });
+
+        // Send invitation email
+        try {
+          this.logger.log(`Manager ${normalizedEmail} created successfully.`);
+          // TODO: Send manager invitation email template
+        } catch (error) {
+          this.logger.warn(`Failed to send invitation email to ${normalizedEmail}: ${error.message}`);
+        }
+
+        success++;
+        details.push({
+          email: normalizedEmail,
+          firstName,
+          lastName,
+          entityName: targetEntity.name,
+          entityPath: targetEntity.path,
+          status: 'success',
+        });
+      } catch (error) {
+        failed++;
+        errors.push({
+          manager: managerData,
+          error: error.message,
+        });
+        details.push({
+          ...managerData,
+          status: 'failed',
+          error: error.message,
+        });
+      }
+    }
+
+    return { success, failed, errors, details };
   }
 
   async updateRegistrationStatus(
@@ -515,7 +836,19 @@ export class UsersService {
   }
 
   async remove(id: string, deletedBy: string, tenantId: string): Promise<void> {
-    await this.findOne(id, tenantId);
+    const user = await this.findOne(id, tenantId);
+
+    // Disconnect WhatsApp session if user has a phone number
+    if (user.phoneNumber) {
+      try {
+        const sessionId = `whatsapp-${user.phoneNumber.slice(1)}`;
+        await this.whatsappService.disconnectSession(sessionId);
+        this.logger.log(`WhatsApp session disconnected for user ${id} (${user.phoneNumber})`);
+      } catch (error) {
+        // Log error but don't fail the deletion if session disconnect fails
+        this.logger.warn(`Failed to disconnect WhatsApp session for user ${id}: ${error.message}`);
+      }
+    }
 
     // Soft delete
     await this.userModel.findByIdAndUpdate(new Types.ObjectId(id), {
@@ -725,10 +1058,8 @@ export class UsersService {
         new Types.ObjectId(userId),
         userId, // Use the user's ID as the creator since we don't have updatedBy/createdBy
         user.entityId.toString(),
-        user.tenantId.toString(),
+        user.tenantId ? user.tenantId.toString() : '',
       );
-
-
       // Update user status to connecting
       await this.updateWhatsAppConnectionStatus(
         userId,

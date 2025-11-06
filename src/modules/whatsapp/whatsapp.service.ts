@@ -88,6 +88,8 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
 
     // Check if session already exists
     let session = await this.sessionModel.findOne({ sessionId });
+
+    console.log(session);
     
     if (!session) {
       session = await this.sessionModel.create({
@@ -328,19 +330,18 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
         // Emit QR code event
         this.eventsService.emitQRCode(sessionId, session.userId.toString(), qrCodeBase64, expiresAt);
 
-        // If this is a QR code regeneration, send email
-        if (shouldSendEmail) {
-          const user = await this.userModel.findById(session.userId);
-          if (user) {
-            await this.emailService.sendInvitationEmailWithQR(user.email, {
-              firstName: user.firstName,
-              lastName: user.lastName,
-              qrCode: qrCodeBase64,
-              sessionId,
-              expiresAt,
-            });
-          }
-        }
+        // if (shouldSendEmail) {
+        //   const user = await this.userModel.findById(session.userId);
+        //   if (user) {
+        //     await this.emailService.sendInvitationEmailWithQR(user.email, {
+        //       firstName: user.firstName,
+        //       lastName: user.lastName,
+        //       qrCode: qrCodeBase64,
+        //       sessionId,
+        //       expiresAt,
+        //     });
+        //   }
+        // }
       }
 
       this.logger.log(`QR Code generated and saved for session: ${sessionId}`);

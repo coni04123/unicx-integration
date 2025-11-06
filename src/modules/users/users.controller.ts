@@ -17,6 +17,8 @@ import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { InviteUserDto } from './dto/create-user.dto';
 import { BulkInviteUserDto } from './dto/create-user.dto';
+import { BulkUploadUsersDto } from './dto/create-user.dto';
+import { BulkUploadManagersDto } from './dto/create-user.dto';
 import { UpdateRegistrationStatusDto } from './dto/create-user.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
@@ -52,6 +54,28 @@ export class UsersController {
   @ApiResponse({ status: 403, description: 'Forbidden' })
   async bulkInvite(@Body() bulkInviteDto: BulkInviteUserDto, @Request() req) {
     return this.usersService.bulkInviteUsers(bulkInviteDto, req.user.sub);
+  }
+
+  @Post('bulk-upload')
+  @Roles(UserRole.SYSTEM_ADMIN, UserRole.TENANT_ADMIN)
+  @RequireTenant()
+  @ApiOperation({ summary: 'Bulk upload users with entity path resolution' })
+  @ApiResponse({ status: 201, description: 'Users uploaded successfully' })
+  @ApiResponse({ status: 400, description: 'Bad request' })
+  @ApiResponse({ status: 403, description: 'Forbidden' })
+  async bulkUpload(@Body() bulkUploadDto: BulkUploadUsersDto, @Request() req) {
+    return this.usersService.bulkUploadUsers(bulkUploadDto, req.user.sub);
+  }
+
+  @Post('bulk-upload-managers')
+  @Roles(UserRole.SYSTEM_ADMIN, UserRole.TENANT_ADMIN)
+  @RequireTenant()
+  @ApiOperation({ summary: 'Bulk upload managers with entity path resolution' })
+  @ApiResponse({ status: 201, description: 'Managers uploaded successfully' })
+  @ApiResponse({ status: 400, description: 'Bad request' })
+  @ApiResponse({ status: 403, description: 'Forbidden' })
+  async bulkUploadManagers(@Body() bulkUploadDto: BulkUploadManagersDto, @Request() req) {
+    return this.usersService.bulkUploadManagers(bulkUploadDto, req.user.sub);
   }
 
   @Get()

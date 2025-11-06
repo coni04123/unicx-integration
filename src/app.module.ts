@@ -19,6 +19,7 @@ import { EmailModule } from './modules/email/email.module';
 import { WhatsAppModule } from './modules/whatsapp/whatsapp.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { StorageModule } from './modules/storage/storage.module';
+import { AuditModule } from './modules/audit/audit.module';
 
 // Common
 import { DatabaseModule } from './common/database/database.module';
@@ -96,6 +97,7 @@ import { MessagingModule } from './common/messaging/messaging.module';
     WhatsAppModule,
     DashboardModule,
     StorageModule,
+    AuditModule,
   ],
 })
 export class AppModule {}
