@@ -4,6 +4,7 @@ export const configuration = () => ({
       connectionString: process.env.AZURE_SERVICE_BUS_CONNECTION_STRING,
       dlqTopic: process.env.AZURE_SERVICE_BUS_DLQ_TOPIC || 'dlq',
       dlqSubscription: process.env.AZURE_SERVICE_BUS_DLQ_SUBSCRIPTION || 'dlq-processor',
+      emailSubscription: process.env.AZURE_SERVICE_BUS_EMAIL_SUBSCRIPTION || 'email-processor',
     },
   },
   

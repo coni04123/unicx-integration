@@ -3,6 +3,7 @@ import { DatabaseModule } from '../../common/database/database.module';
 import { AuthModule } from '../auth/auth.module';
 import { EmailModule } from '../email/email.module';
 import { WhatsAppModule } from '../whatsapp/whatsapp.module';
+import { MessagingModule } from '../../common/messaging/messaging.module';
 import { UsersService } from './users.service';
 import { UsersController } from './users.controller';
 
@@ -11,6 +12,7 @@ import { UsersController } from './users.controller';
     DatabaseModule, 
     AuthModule, 
     EmailModule,
+    MessagingModule,
     forwardRef(() => WhatsAppModule),
   ],
   controllers: [UsersController],

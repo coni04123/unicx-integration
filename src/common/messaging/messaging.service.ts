@@ -8,6 +8,7 @@ export enum MessageTopic {
   ENTITY_EVENTS = 'entity-events',
   MESSAGE_EVENTS = 'message-events',
   SESSION_EVENTS = 'session-events',
+  EMAIL_EVENTS = 'email-events',
 }
 
 export interface MessagePayload<T = any> {
@@ -226,6 +227,32 @@ export class MessagingService implements OnModuleDestroy {
       {
         userId,
         tenantId,
+      }
+    );
+  }
+
+  /**
+   * Publish email event
+   */
+  async publishEmailEvent(
+    eventType: string,
+    emailData: {
+      to: string;
+      templateId?: string;
+      subject?: string;
+      templateData?: Record<string, any>;
+    },
+    userId?: string,
+    tenantId?: string
+  ): Promise<void> {
+    await this.publish(
+      MessageTopic.EMAIL_EVENTS,
+      eventType,
+      emailData,
+      {
+        userId,
+        tenantId,
+        metadata: { email: emailData.to },
       }
     );
   }

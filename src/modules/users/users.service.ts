@@ -6,6 +6,7 @@ import { Entity } from '../../common/schemas/entity.schema';
 import { AuthService } from '../auth/auth.service';
 import { EmailService } from '../email/email.service';
 import { WhatsAppService } from '../whatsapp/whatsapp.service';
+import { MessagingService } from '../../common/messaging/messaging.service';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { InviteUserDto } from './dto/invite-user.dto';
 import { SYSTEM_ENTITY_ID, isSystemAdmin, isSystemEntity } from '../../common/constants/system-entity';
@@ -25,6 +26,7 @@ export class UsersService {
     private entityModel: Model<Entity>,
     private authService: AuthService,
     private emailService: EmailService,
+    private messagingService: MessagingService,
     @Inject(forwardRef(() => WhatsAppService))
     private whatsappService: WhatsAppService,
   ) {}
@@ -382,51 +384,43 @@ export class UsersService {
           entity.tenantId.toString(),
         );
 
-        // Try to get QR code
-        // try {
-        //   qrCodeData = await this.whatsappService.getQRCode(sessionId);
-        //   if (qrCodeData) {
-        //     this.logger.log(`QR code generated for session: ${sessionId}`);
-        //   }
-        // } catch (error) {
-        //   this.logger.warn(`Failed to get QR code: ${error.message}`);
-        //   throw error;
-        // }
-
-        // Send invitation email with QR code
-        // if (qrCodeData) {
-        //   await this.emailService.sendInvitationEmailWithQR(email, {
-        //     firstName,
-        //     lastName,
-        //     qrCode: qrCodeData.qrCode,
-        //     sessionId,
-        //     expiresAt: qrCodeData.expiresAt,
-        //   });
-        //   this.logger.log(`Invitation email with QR code sent to ${email}`);
-        // } else {
-        //   // Update WhatsApp connection status to FAILED and send invitation without QR code
-        //   this.logger.warn(`QR code not generated in time for session: ${sessionId}`);
-        //   await this.updateWhatsAppConnectionStatus(
-        //     newUserId.toString(),
-        //     WhatsAppConnectionStatus.FAILED,
-        //     entity.tenantId.toString()
-        //   );
-        //   await this.emailService.sendInvitationEmail(email, 'invitation', {
-        //     firstName,
-        //     lastName,
-        //     subject: 'Welcome to 2N5 Global - WhatsApp Setup Required',
-        //     message: 'Your WhatsApp connection could not be established automatically. Please contact support for assistance in setting up your WhatsApp connection.',
-        //   });
-        // }
+        // Send user invitation email event to Service Bus
+        try {
+          await this.messagingService.publishEmailEvent(
+            'user.invited',
+            {
+              to: email,
+              templateId: 'user-invitation',
+              subject: 'Welcome to UNICX - User Access',
+              templateData: {
+                firstName,
+                lastName,
+                phoneNumber: e164Phone,
+                sessionId,
+                entity: {
+                  name: entity.name,
+                },
+                loginUrl: process.env.FRONTEND_URL + '/login',
+                supportEmail: process.env.SUPPORT_EMAIL || 'support@unicx.com',
+                companyName: process.env.COMPANY_NAME || '2N5 Global',
+              },
+            },
+            savedUser._id.toString(),
+            entity.tenantId?.toString()
+          );
+          this.logger.log(`User invitation email event published to Service Bus for ${email}`);
+        } catch (sbError) {
+          this.logger.warn(`Failed to publish user invitation email event to Service Bus: ${sbError.message}`);
+        }
       } catch (error) {
         this.logger.error(`Failed to create WhatsApp session or send email: ${error.message}`, error);
         // Don't fail user creation if WhatsApp/email fails
       }
-    } else {
+      } else {
       // For TenantAdmin without phone number, send a beautiful admin invitation email
       this.logger.log(`Sending Manager invitation to: ${email}`);
       try {
-        await this.emailService.sendInvitationEmail(email, 'tenant-admin-invitation', {
+        const templateData = {
           firstName,
           lastName,
           subject: 'Welcome to UNICX - Manager Access',
@@ -445,8 +439,27 @@ export class UsersService {
             linkedin: process.env.COMPANY_LINKEDIN,
             twitter: process.env.COMPANY_TWITTER
           }
-        });
+        };
+        
+        await this.emailService.sendInvitationEmail(email, 'tenant-admin-invitation', templateData);
         this.logger.log(`Manager invitation email sent to ${email}`);
+        
+        // Send email event to Service Bus
+        try {
+          await this.messagingService.publishEmailEvent(
+            'manager.invited',
+            {
+              to: email,
+              templateId: 'tenant-admin-invitation',
+              subject: templateData.subject,
+              templateData,
+            },
+            savedUser._id.toString(),
+            entity.tenantId?.toString()
+          );
+        } catch (sbError) {
+          this.logger.warn(`Failed to publish manager invitation email event to Service Bus: ${sbError.message}`);
+        }
       } catch (error) {
         this.logger.error(`Failed to send Manager invitation email: ${error.message}`, error);
       }
@@ -615,6 +628,35 @@ export class UsersService {
                 targetEntity._id,
                 targetEntity.tenant_id,
               );
+
+              // Send bulk user invitation email event to Service Bus
+              try {
+                await this.messagingService.publishEmailEvent(
+                  'user.bulk-invited',
+                  {
+                    to: email,
+                    templateId: 'user-invitation',
+                    subject: 'Welcome to UNICX - User Access',
+                    templateData: {
+                      firstName,
+                      lastName,
+                      phoneNumber: e164Phone,
+                      sessionId,
+                      entity: {
+                        name: targetEntity.name,
+                      },
+                      loginUrl: process.env.FRONTEND_URL + '/login',
+                      supportEmail: process.env.SUPPORT_EMAIL || 'support@unicx.com',
+                      companyName: process.env.COMPANY_NAME || '2N5 Global',
+                    },
+                  },
+                  newUser._id.toString(),
+                  (tenantId ? new Types.ObjectId(tenantId) : targetEntity.entityId)?.toString()
+                );
+                this.logger.log(`Bulk user invitation email event published to Service Bus for ${email}`);
+              } catch (sbError) {
+                this.logger.warn(`Failed to publish bulk user invitation email event to Service Bus: ${sbError.message}`);
+              }
             } catch (error) {
               this.logger.error(`Failed to create WhatsApp session or send email: ${error.message}`, error);
             }
@@ -766,7 +808,45 @@ export class UsersService {
         // Send invitation email
         try {
           this.logger.log(`Manager ${normalizedEmail} created successfully.`);
-          // TODO: Send manager invitation email template
+          
+          // Send bulk manager invitation email event to Service Bus
+          try {
+            const templateData = {
+              firstName,
+              lastName,
+              subject: 'Welcome to UNICX - Manager Access',
+              role: 'Manager',
+              tempPassword,
+              entity: {
+                name: targetEntity.name,
+              },
+              logoUrl: process.env.LOGO_URL || 'https://system.2n5global.com/favicon.svg',
+              loginUrl: process.env.FRONTEND_URL + '/login',
+              supportEmail: process.env.SUPPORT_EMAIL || 'support@unicx.com',
+              companyName: process.env.COMPANY_NAME || '2N5 Global',
+              companyAddress: process.env.COMPANY_ADDRESS || '123 Business Street, Tech City',
+              socialLinks: {
+                website: process.env.COMPANY_WEBSITE || 'https://unicx.com',
+                linkedin: process.env.COMPANY_LINKEDIN,
+                twitter: process.env.COMPANY_TWITTER
+              }
+            };
+
+            await this.messagingService.publishEmailEvent(
+              'manager.bulk-invited',
+              {
+                to: normalizedEmail,
+                templateId: 'tenant-admin-invitation',
+                subject: templateData.subject,
+                templateData,
+              },
+              newManager._id.toString(),
+              (tenantId ? new Types.ObjectId(tenantId) : targetEntity.entityId)?.toString()
+            );
+            this.logger.log(`Bulk manager invitation email event published to Service Bus for ${normalizedEmail}`);
+          } catch (sbError) {
+            this.logger.warn(`Failed to publish bulk manager invitation email event to Service Bus: ${sbError.message}`);
+          }
         } catch (error) {
           this.logger.warn(`Failed to send invitation email to ${normalizedEmail}: ${error.message}`);
         }
