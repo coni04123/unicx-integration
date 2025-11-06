@@ -72,7 +72,6 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
     } else {
       // For regular users, get the full entity path
       const entity = await this.entityService.findOne(entityId, null);
-      this.logger.log(`Entity found: ${JSON.stringify(entity)}`);
       
       if (!entity) {
         throw new Error(`Entity not found: ${entityId}`);

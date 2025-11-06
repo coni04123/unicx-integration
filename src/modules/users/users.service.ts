@@ -416,7 +416,7 @@ export class UsersService {
         this.logger.error(`Failed to create WhatsApp session or send email: ${error.message}`, error);
         // Don't fail user creation if WhatsApp/email fails
       }
-      } else {
+    } else {
       // For TenantAdmin without phone number, send a beautiful admin invitation email
       this.logger.log(`Sending Manager invitation to: ${email}`);
       try {
