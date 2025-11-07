@@ -1,5 +1,4 @@
 import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
-import { WhatsAppEventsService } from './whatsapp-events.service';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Client, LocalAuth, MessageMedia } from 'whatsapp-web.js';
@@ -38,7 +37,6 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
     private configService: ConfigService,
     private entityService: EntitiesService,
     private storageService: StorageService,
-    private eventsService: WhatsAppEventsService,
     private emailService: EmailService,
   ) {}
 
@@ -88,8 +86,6 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
     // Check if session already exists
     let session = await this.sessionModel.findOne({ sessionId });
 
-    console.log(session);
-    
     if (!session) {
       session = await this.sessionModel.create({
         _id: new Types.ObjectId(),
@@ -326,21 +322,7 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
       );
 
       if (session) {
-        // Emit QR code event
-        this.eventsService.emitQRCode(sessionId, session.userId.toString(), qrCodeBase64, expiresAt);
-
-        // if (shouldSendEmail) {
-        //   const user = await this.userModel.findById(session.userId);
-        //   if (user) {
-        //     await this.emailService.sendInvitationEmailWithQR(user.email, {
-        //       firstName: user.firstName,
-        //       lastName: user.lastName,
-        //       qrCode: qrCodeBase64,
-        //       sessionId,
-        //       expiresAt,
-        //     });
-        //   }
-        // }
+        // QR code generated and saved
       }
 
       this.logger.log(`QR Code generated and saved for session: ${sessionId}`);
@@ -368,8 +350,7 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
       );
 
       if (session) {
-        // Emit status change event
-        this.eventsService.emitStatusChange(sessionId, session.userId.toString(), SessionStatus.READY);
+        // Session ready
       }
 
       this.logger.log(`Session ready: ${sessionId} - ${info.pushname} (${info.wid.user})`);
@@ -391,8 +372,7 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
     );
 
     if (session) {
-      // Emit status change event
-      this.eventsService.emitStatusChange(sessionId, session.userId.toString(), SessionStatus.DISCONNECTED);
+      // Session disconnected
     }
 
     this.clients.delete(sessionId);

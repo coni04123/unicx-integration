@@ -8,6 +8,7 @@ import { EmailService } from '../email/email.service';
 import { RegisterDto } from './dto/register.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
+import { MESSAGES } from '../../common/constants/messages';
 import * as bcrypt from 'bcryptjs';
 import * as crypto from 'crypto';
 
@@ -54,7 +55,7 @@ export class AuthService {
     if (!user) {
       throw new UnauthorizedException({
         statusCode: HttpStatus.UNAUTHORIZED,
-        message: 'No account found with this email address',
+        message: MESSAGES.AUTH.ACCOUNT_NOT_FOUND,
         error: 'Unauthorized'
       });
     }
@@ -62,7 +63,7 @@ export class AuthService {
     if (!user.isActive) {
       throw new UnauthorizedException({
         statusCode: HttpStatus.UNAUTHORIZED,
-        message: 'This account has been deactivated',
+        message: MESSAGES.AUTH.ACCOUNT_DEACTIVATED,
         error: 'Unauthorized'
       });
     }
@@ -70,7 +71,7 @@ export class AuthService {
     if (user.registrationStatus !== 'registered') {
       throw new UnauthorizedException({
         statusCode: HttpStatus.UNAUTHORIZED,
-        message: 'Please complete your registration before logging in',
+        message: MESSAGES.AUTH.REGISTRATION_INCOMPLETE,
         error: 'Unauthorized'
       });
     }
@@ -79,7 +80,7 @@ export class AuthService {
     if (!isPasswordValid) {
       throw new UnauthorizedException({
         statusCode: HttpStatus.UNAUTHORIZED,
-        message: 'Invalid username or password',
+        message: MESSAGES.AUTH.INVALID_CREDENTIALS,
         error: 'Unauthorized'
       });
     }

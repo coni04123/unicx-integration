@@ -1,15 +1,12 @@
-import { Controller, Get, Post, Delete, Body, Param, Query, UseGuards, Request, UseInterceptors, UploadedFile, Sse, MessageEvent } from '@nestjs/common';
+import { Controller, Get, Post, Delete, Body, Param, Query, UseGuards, Request, UseInterceptors, UploadedFile } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery, ApiConsumes } from '@nestjs/swagger';
 import { WhatsAppService } from './whatsapp.service';
-import { WhatsAppEventsService } from './whatsapp-events.service';
 import { StorageService } from '../storage/storage.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles, RequireTenant } from '../auth/decorators';
 import { UserRole } from '../../common/schemas/user.schema';
-import { Observable } from 'rxjs';
-import { map } from 'rxjs/operators';
 import { SYSTEM_ENTITY_ID } from '@/common/constants/system-entity';
 import { Types } from 'mongoose';
 
@@ -20,7 +17,6 @@ import { Types } from 'mongoose';
 export class WhatsAppController {
   constructor(
     private readonly whatsappService: WhatsAppService,
-    private readonly whatsappEventsService: WhatsAppEventsService,
     private readonly storageService: StorageService,
   ) {}
 
@@ -65,22 +61,6 @@ export class WhatsAppController {
   @ApiResponse({ status: 200, description: 'Session status retrieved successfully' })
   async getSessionStatus(@Param('sessionId') sessionId: string) {
     return this.whatsappService.getSessionStatus(sessionId);
-  }
-
-  @Sse('events')
-  @UseGuards(JwtAuthGuard)
-  @ApiOperation({ summary: 'Subscribe to WhatsApp events' })
-  @ApiResponse({ status: 200, description: 'Event stream established' })
-  events(@Request() req): Observable<MessageEvent> {
-    const userId = req.user.id;
-    return this.whatsappEventsService.subscribe(userId).pipe(
-      map(event => ({
-        data: event,
-        id: new Date().getTime().toString(),
-        type: 'whatsapp-event',
-        retry: 15000
-      }))
-    );
   }
 
   @Delete('sessions/:sessionId')

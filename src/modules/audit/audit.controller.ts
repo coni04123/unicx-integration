@@ -13,6 +13,7 @@ import { Roles } from '../auth/decorators';
 import { UserRole } from '../../common/schemas/user.schema';
 import { AuditLogService } from './audit.service';
 import { HttpMethod, AuditLogStatus } from '../../common/schemas/audit-log.schema';
+import { MESSAGES } from '../../common/constants/messages';
 
 @ApiTags('Audit Logs')
 @Controller('audit')
@@ -59,13 +60,13 @@ export class AuditLogController {
 
     // Validate parsed values
     if (statusCodeStr && statusCodeStr.trim() !== '' && (isNaN(statusCode!) || statusCode! < 0)) {
-      throw new BadRequestException('Invalid statusCode: must be a positive number');
+      throw new BadRequestException(MESSAGES.VALIDATION.INVALID_STATUS_CODE);
     }
     if (pageStr && pageStr.trim() !== '' && (isNaN(page!) || page! < 1)) {
-      throw new BadRequestException('Invalid page: must be a positive number >= 1');
+      throw new BadRequestException(MESSAGES.VALIDATION.INVALID_PAGE);
     }
     if (limitStr && limitStr.trim() !== '' && (isNaN(limit!) || limit! < 1)) {
-      throw new BadRequestException('Invalid limit: must be a positive number >= 1');
+      throw new BadRequestException(MESSAGES.VALIDATION.INVALID_LIMIT);
     }
 
     const filters: any = {
@@ -111,7 +112,7 @@ export class AuditLogController {
     const days = daysStr && daysStr.trim() !== '' ? parseInt(daysStr, 10) : 30;
     
     if (isNaN(days) || days < 1) {
-      throw new BadRequestException('Invalid days: must be a positive number >= 1');
+      throw new BadRequestException(MESSAGES.VALIDATION.INVALID_DAYS);
     }
     
     const tenantId = req?.user?.tenantId;

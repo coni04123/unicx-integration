@@ -43,9 +43,6 @@ export class UserPreferences {
   emailNotifications: boolean;
 
   @Prop({ default: true })
-  pushNotifications: boolean;
-
-  @Prop({ default: true })
   whatsappNotifications: boolean;
 }
 

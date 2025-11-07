@@ -8,6 +8,7 @@ import { CreateEntityDto } from './dto/create-entity.dto';
 import { UpdateEntityDto } from './dto/update-entity.dto';
 import { MoveEntityDto } from './dto/move-entity.dto';
 import { SYSTEM_ENTITY_ID, isSystemEntity } from '../../common/constants/system-entity';
+import { MESSAGES } from '../../common/constants/messages';
 
 @Injectable()
 export class EntitiesService {
@@ -26,7 +27,7 @@ export class EntitiesService {
     // Validate custom entity type if provided
     if (customEntityTypeId) {
       if (type !== 'custom') {
-        throw new BadRequestException('customEntityTypeId can only be used when type is "custom"');
+        throw new BadRequestException(MESSAGES.ENTITY.CUSTOM_TYPE_INVALID);
       }
 
       const customEntityType = await this.entityTypeModel.findOne({
@@ -36,10 +37,10 @@ export class EntitiesService {
       });
 
       if (!customEntityType) {
-        throw new NotFoundException('Custom entity type not found');
+        throw new NotFoundException(MESSAGES.ENTITY.CUSTOM_TYPE_NOT_FOUND);
       }
     } else if (type === 'custom') {
-      throw new BadRequestException('customEntityTypeId is required when type is "custom"');
+      throw new BadRequestException(MESSAGES.ENTITY.CUSTOM_TYPE_REQUIRED);
     }
 
     // Validate parent exists if provided
@@ -51,12 +52,12 @@ export class EntitiesService {
       });
 
       if (!parent) {
-        throw new NotFoundException('Parent entity not found');
+        throw new NotFoundException(MESSAGES.ENTITY.PARENT_NOT_FOUND);
       }
 
       // Prevent circular references
       if (await this.wouldCreateCircularReference(parentId)) {
-        throw new BadRequestException('Cannot create circular reference');
+        throw new BadRequestException(MESSAGES.ENTITY.CIRCULAR_REFERENCE);
       }
     }
 
@@ -66,11 +67,11 @@ export class EntitiesService {
       if (parentId) {
         const canManage = await this.canManageEntity(userEntityId, parentId);
         if (!canManage) {
-          throw new ForbiddenException('You can only create entities under your entity hierarchy');
+          throw new ForbiddenException(MESSAGES.ENTITY.HIERARCHY_ACCESS_DENIED);
         }
       } else {
         // TenantAdmin cannot create root entities
-        throw new ForbiddenException('Managers cannot create root entities');
+        throw new ForbiddenException(MESSAGES.ENTITY.ROOT_ENTITY_CREATION_DENIED);
       }
     }
 
@@ -173,7 +174,7 @@ export class EntitiesService {
     });
 
     if (!entity) {
-      throw new NotFoundException('Entity not found');
+      throw new NotFoundException(MESSAGES.ENTITY.NOT_FOUND);
     }
 
     // Populate customEntityTypeId if type is custom
@@ -214,7 +215,7 @@ export class EntitiesService {
     if (userRole === UserRole.TENANT_ADMIN) {
       const canManage = await this.canManageEntity(userEntityId, id);
       if (!canManage) {
-        throw new ForbiddenException('You can only edit entities under your entity hierarchy');
+        throw new ForbiddenException(MESSAGES.ENTITY.HIERARCHY_ACCESS_DENIED);
       }
     }
 
@@ -248,23 +249,23 @@ export class EntitiesService {
           });
 
           if (!customEntityType) {
-            throw new NotFoundException('Custom entity type not found');
+            throw new NotFoundException(MESSAGES.ENTITY.CUSTOM_TYPE_NOT_FOUND);
           }
 
           updateData.customEntityTypeId = new Types.ObjectId(updateEntityDto.customEntityTypeId);
           updateData.type = 'custom';
         } else {
           // Removing custom entity type - need to set a default type
-          throw new BadRequestException('Cannot remove customEntityTypeId. Please set a different type first.');
+          throw new BadRequestException(MESSAGES.ENTITY.CANNOT_REMOVE_CUSTOM_TYPE);
         }
       } else {
-        throw new BadRequestException('customEntityTypeId can only be used when type is "custom"');
+        throw new BadRequestException(MESSAGES.ENTITY.CUSTOM_TYPE_INVALID);
       }
     }
 
     // If type is being changed to custom but no customEntityTypeId provided
     if (updateEntityDto.type === 'custom' && !updateEntityDto.customEntityTypeId && entity.type !== 'custom') {
-      throw new BadRequestException('customEntityTypeId is required when type is "custom"');
+      throw new BadRequestException(MESSAGES.ENTITY.CUSTOM_TYPE_REQUIRED);
     }
 
     // If type is being changed from custom to something else, clear customEntityTypeId
@@ -309,18 +310,18 @@ export class EntitiesService {
       // Check if user can manage the entity being moved
       const canManageEntity = await this.canUserManageEntity(userEntityId, id);
       if (!canManageEntity) {
-        throw new ForbiddenException('You can only move entities under your entity hierarchy');
+        throw new ForbiddenException(MESSAGES.ENTITY.HIERARCHY_ACCESS_DENIED);
       }
 
       // Check if user can manage the new parent (if provided)
       if (newParentId) {
         const canManageParent = await this.canUserManageEntity(userEntityId, newParentId);
         if (!canManageParent) {
-          throw new ForbiddenException('You can only move entities to parents under your entity hierarchy');
+          throw new ForbiddenException(MESSAGES.ENTITY.HIERARCHY_ACCESS_DENIED);
         }
       } else {
         // TenantAdmin cannot move entities to root level
-        throw new ForbiddenException('Managers cannot move entities to root level');
+        throw new ForbiddenException(MESSAGES.ENTITY.CANNOT_MOVE_TO_ROOT);
       }
     }
 
@@ -339,12 +340,12 @@ export class EntitiesService {
       const newParent = await this.entityModel.findOne(newParentQuery);
 
       if (!newParent) {
-        throw new NotFoundException('New parent entity not found');
+        throw new NotFoundException(MESSAGES.ENTITY.PARENT_NOT_FOUND);
       }
 
       // Prevent circular references
       if (await this.wouldCreateCircularReference(newParentId, id)) {
-        throw new BadRequestException('Cannot create circular reference');
+        throw new BadRequestException(MESSAGES.ENTITY.CIRCULAR_REFERENCE);
       }
     }
 
@@ -372,7 +373,7 @@ export class EntitiesService {
     if (userRole === UserRole.TENANT_ADMIN) {
       const canManage = await this.canManageEntity(userEntityId, id);
       if (!canManage) {
-        throw new ForbiddenException('You can only delete entities under your entity hierarchy');
+        throw new ForbiddenException(MESSAGES.ENTITY.HIERARCHY_ACCESS_DENIED);
       }
     }
 
@@ -390,7 +391,7 @@ export class EntitiesService {
     });
 
     if (childrenCount > 0) {
-      throw new BadRequestException('Cannot delete entity with children');
+      throw new BadRequestException(MESSAGES.ENTITY.HAS_CHILDREN);
     }
 
     // Check if entity has users
@@ -400,7 +401,7 @@ export class EntitiesService {
     });
 
     if (usersCount > 0) {
-      throw new BadRequestException('Cannot delete entity with active users');
+      throw new BadRequestException(MESSAGES.ENTITY.HAS_ACTIVE_USERS);
     }
 
     // Soft delete
@@ -466,7 +467,7 @@ export class EntitiesService {
     });
 
     if (!parent) {
-      throw new NotFoundException('Parent entity not found');
+      throw new NotFoundException(MESSAGES.ENTITY.PARENT_NOT_FOUND);
     }
 
     return `${parent.path} > ${name}`;
@@ -483,7 +484,7 @@ export class EntitiesService {
     });
 
     if (!parent) {
-      throw new NotFoundException('Parent entity not found');
+      throw new NotFoundException(MESSAGES.ENTITY.PARENT_NOT_FOUND);
     }
 
     const path = parent.entityIdPath;
@@ -613,7 +614,6 @@ export class EntitiesService {
     if (!targetEntity) {
       return false;
     }
-
     return true;
   }
 }

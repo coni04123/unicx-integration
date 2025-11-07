@@ -14,6 +14,7 @@ import { BulkInviteUserDto } from './dto/bulk-invite-user.dto';
 import { parsePhoneNumber, isValidPhoneNumber } from 'libphonenumber-js';
 import { randomUUID } from 'crypto';
 import { isEmpty } from 'class-validator';
+import { MESSAGES } from '../../common/constants/messages';
 
 @Injectable()
 export class UsersService {
@@ -120,7 +121,7 @@ export class UsersService {
   async findOne(id: string, tenantId: string): Promise<User> {
     // Validate id is provided
     if (!id) {
-      throw new BadRequestException('User ID is required');
+      throw new BadRequestException(MESSAGES.USER.ID_REQUIRED);
     }
 
     // Trim whitespace and convert to string
@@ -129,7 +130,7 @@ export class UsersService {
     // Validate id is a valid ObjectId format
     if (!Types.ObjectId.isValid(trimmedId)) {
       this.logger.error(`Invalid user ID format: "${trimmedId}" (original: "${id}", type: ${typeof id}, length: ${trimmedId.length})`);
-      throw new BadRequestException(`Invalid user ID format. Please log out and log back in to refresh your authentication token. Received: "${trimmedId}"`);
+      throw new BadRequestException(MESSAGES.USER.INVALID_ID_FORMAT);
     }
 
     try {
@@ -159,7 +160,7 @@ export class UsersService {
 
       if (!user) {
         this.logger.error(`User not found with ID: ${trimmedId}, tenantId: ${trimmedTenantId || 'none'}`);
-        throw new NotFoundException('User not found');
+        throw new NotFoundException(MESSAGES.USER.NOT_FOUND);
       }
 
       return user;
@@ -168,7 +169,7 @@ export class UsersService {
         throw error;
       }
       this.logger.error(`Error finding user with ID ${trimmedId}:`, error);
-      throw new BadRequestException(`Failed to find user: ${error.message}`);
+      throw new BadRequestException(MESSAGES.USER.UPDATE_FAILED);
     }
   }
 
@@ -186,7 +187,7 @@ export class UsersService {
     const user = await this.userModel.findOne(query);
 
     if (!user) {
-      throw new NotFoundException('User not found');
+      throw new NotFoundException(MESSAGES.USER.NOT_FOUND);
     }
 
     return user;
@@ -195,7 +196,7 @@ export class UsersService {
   async update(id: string, updateUserDto: UpdateUserDto, updatedBy: string, tenantId: string): Promise<User> {
     // Validate id is provided
     if (!id) {
-      throw new BadRequestException('User ID is required');
+      throw new BadRequestException(MESSAGES.USER.ID_REQUIRED);
     }
 
     // Trim whitespace and convert to string
@@ -204,7 +205,7 @@ export class UsersService {
     // Validate id is a valid ObjectId format
     if (!Types.ObjectId.isValid(trimmedId)) {
       this.logger.error(`Invalid user ID format in update: "${trimmedId}" (original: "${id}", type: ${typeof id})`);
-      throw new BadRequestException(`Invalid user ID format: ${trimmedId}`);
+      throw new BadRequestException(MESSAGES.USER.INVALID_ID_FORMAT);
     }
 
     // Trim tenantId if provided
@@ -220,7 +221,7 @@ export class UsersService {
     // If phone number is being updated, validate E164 format
     if (updateUserDto.phoneNumber) {
       if (!isValidPhoneNumber(updateUserDto.phoneNumber)) {
-        throw new BadRequestException('Invalid phone number format');
+        throw new BadRequestException(MESSAGES.USER.INVALID_PHONE_FORMAT);
       }
       const parsedPhone = parsePhoneNumber(updateUserDto.phoneNumber);
       updateData.phoneNumber = parsedPhone.format('E.164');
@@ -239,7 +240,7 @@ export class UsersService {
       });
 
       if (existingUser) {
-        throw new BadRequestException('This email address is already in use. Please choose a different email address.');
+        throw new BadRequestException(MESSAGES.USER.EMAIL_ALREADY_EXISTS);
       }
 
       // Directly update the email (no verification required)
@@ -255,7 +256,7 @@ export class UsersService {
       });
 
       if (!entity) {
-        throw new NotFoundException('Entity not found');
+        throw new NotFoundException(MESSAGES.ENTITY.NOT_FOUND);
       }
 
       updateData.entityPath = entity.path;
@@ -269,29 +270,8 @@ export class UsersService {
     const updatedUser = await this.userModel.findByIdAndUpdate(new Types.ObjectId(trimmedId), updateData, { new: true });
 
     if (!updatedUser) {
-      throw new NotFoundException('User not found after update');
+      throw new NotFoundException(MESSAGES.USER.UPDATE_FAILED);
     }
-
-    // // If email was changed, send verification email
-    // if (updateUserDto.email && updateUserDto.email !== user.email) {
-    //   try {
-    //     const frontendUrl = process.env.FRONTEND_URL || 'https://localhost:3000';
-    //     const verificationLink = `${frontendUrl}/verify-email?token=${updateData.emailVerificationToken}&userId=${trimmedId}`;
-        
-    //     await this.emailService.sendEmailVerificationEmail(
-    //       updateData.pendingEmail,
-    //       {
-    //         firstName: updatedUser.firstName,
-    //         lastName: updatedUser.lastName,
-    //         verificationLink,
-    //         expiryHours: 24,
-    //       }
-    //     );
-    //   } catch (error) {
-    //     this.logger.error(`Failed to send email verification email: ${error.message}`);
-    //     // Don't throw error - email update was saved, just verification email failed
-    //   }
-    // }
 
     return updatedUser;
   }
@@ -303,13 +283,13 @@ export class UsersService {
     let e164Phone = null;
     if (phoneNumber) {
       if (!isValidPhoneNumber(phoneNumber)) {
-        throw new BadRequestException('Invalid phone number format');
+        throw new BadRequestException(MESSAGES.USER.INVALID_PHONE_FORMAT);
       }
       const parsedPhone = parsePhoneNumber(phoneNumber);
       e164Phone = parsedPhone.format('E.164');
     } else if (role !== UserRole.TENANT_ADMIN) {
       // Phone number is required for regular Users
-      throw new BadRequestException('Phone number is required for User role');
+      throw new BadRequestException(MESSAGES.USER.PHONE_NUMBER_REQUIRED);
     }
 
     // Check if user already exists
@@ -323,7 +303,7 @@ export class UsersService {
     });
 
     if (existingUser) {
-      throw new BadRequestException('User with this phone number or email already exists');
+      throw new BadRequestException(MESSAGES.USER.PHONE_ALREADY_EXISTS);
     }
 
     // Validate entity exists
@@ -333,7 +313,7 @@ export class UsersService {
     });
 
     if (!entity) {
-      throw new NotFoundException('Entity not found');
+      throw new NotFoundException(MESSAGES.ENTITY.NOT_FOUND);
     }
 
     // Generate password hash for user
@@ -366,9 +346,6 @@ export class UsersService {
     const user = new this.userModel(userData);
 
     const savedUser = await user.save();
-
-    // Declare qrCodeData at method level
-    // let qrCodeData = null;
 
     // Create WhatsApp session and send QR code via email (only for users with phone numbers)
     if (e164Phone) {
@@ -417,8 +394,8 @@ export class UsersService {
         // Don't fail user creation if WhatsApp/email fails
       }
     } else {
-      // For TenantAdmin without phone number, send a beautiful admin invitation email
-      this.logger.log(`Sending Manager invitation to: ${email}`);
+      // For TenantAdmin without phone number, send manager invitation email via Service Bus
+      this.logger.log(`Publishing Manager invitation email event to Service Bus for: ${email}`);
       try {
         const templateData = {
           firstName,
@@ -441,27 +418,22 @@ export class UsersService {
           }
         };
         
-        await this.emailService.sendInvitationEmail(email, 'tenant-admin-invitation', templateData);
-        this.logger.log(`Manager invitation email sent to ${email}`);
-        
         // Send email event to Service Bus
-        try {
-          await this.messagingService.publishEmailEvent(
-            'manager.invited',
-            {
-              to: email,
-              templateId: 'tenant-admin-invitation',
-              subject: templateData.subject,
-              templateData,
-            },
-            savedUser._id.toString(),
-            entity.tenantId?.toString()
-          );
-        } catch (sbError) {
-          this.logger.warn(`Failed to publish manager invitation email event to Service Bus: ${sbError.message}`);
-        }
+        await this.messagingService.publishEmailEvent(
+          'manager.invited',
+          {
+            to: email,
+            templateId: 'manager-invitation',
+            subject: templateData.subject,
+            templateData,
+          },
+          savedUser._id.toString(),
+          entity.tenantId?.toString()
+        );
+        this.logger.log(`Manager invitation email event published to Service Bus for ${email}`);
       } catch (error) {
-        this.logger.error(`Failed to send Manager invitation email: ${error.message}`, error);
+        this.logger.error(`Failed to publish manager invitation email event to Service Bus: ${error.message}`, error);
+        // Don't fail user creation if email publishing fails
       }
     }
 
@@ -632,7 +604,7 @@ export class UsersService {
               // Send bulk user invitation email event to Service Bus
               try {
                 await this.messagingService.publishEmailEvent(
-                  'user.bulk-invited',
+                  'user.invited',
                   {
                     to: email,
                     templateId: 'user-invitation',
@@ -833,10 +805,10 @@ export class UsersService {
             };
 
             await this.messagingService.publishEmailEvent(
-              'manager.bulk-invited',
+              'manager.invited',
               {
                 to: normalizedEmail,
-                templateId: 'tenant-admin-invitation',
+                templateId: 'manager-invitation',
                 subject: templateData.subject,
                 templateData,
               },
@@ -1037,17 +1009,17 @@ export class UsersService {
     });
 
     if (!user) {
-      throw new BadRequestException('Invalid or expired verification token');
+      throw new BadRequestException(MESSAGES.USER.VERIFICATION_TOKEN_INVALID);
     }
 
     // Check if token is expired
     if (user.emailVerificationExpires && user.emailVerificationExpires < new Date()) {
-      throw new BadRequestException('Verification token has expired');
+      throw new BadRequestException(MESSAGES.USER.VERIFICATION_TOKEN_EXPIRED);
     }
 
     // Check if there's a pending email
     if (!user.pendingEmail) {
-      throw new BadRequestException('No pending email verification');
+      throw new BadRequestException(MESSAGES.USER.NO_PENDING_VERIFICATION);
     }
 
     // Normalize pending email for comparison
@@ -1064,7 +1036,7 @@ export class UsersService {
     });
 
     if (existingUser) {
-      throw new BadRequestException('This email address is already in use. Please choose a different email address.');
+      throw new BadRequestException(MESSAGES.USER.EMAIL_ALREADY_EXISTS);
     }
 
     // Update email and clear verification fields
@@ -1087,7 +1059,7 @@ export class UsersService {
     const user = await this.findOne(userId, '');
 
     if (!user.pendingEmail) {
-      throw new BadRequestException('No pending email verification');
+      throw new BadRequestException(MESSAGES.USER.NO_PENDING_VERIFICATION);
     }
 
     // Check if token is expired, regenerate if needed
@@ -1195,7 +1167,7 @@ export class UsersService {
         WhatsAppConnectionStatus.FAILED,
         tenantId
       );
-      throw new BadRequestException(`Failed to regenerate QR code: ${error.message}`);
+      throw new BadRequestException(MESSAGES.USER.QR_REGENERATION_FAILED);
     }
   }
 }

@@ -2,7 +2,6 @@ import { Module, forwardRef } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { WhatsAppService } from './whatsapp.service';
 import { WhatsAppController } from './whatsapp.controller';
-import { WhatsAppEventsService } from './whatsapp-events.service';
 import { WhatsAppSession, WhatsAppSessionSchema } from '../../common/schemas/whatsapp-session.schema';
 import { Message, MessageSchema } from '../../common/schemas/message.schema';
 import { User, UserSchema } from '../../common/schemas/user.schema';
@@ -24,8 +23,8 @@ import { EmailModule } from '../email/email.module';
     EmailModule,
   ],
   controllers: [WhatsAppController],
-  providers: [WhatsAppService, WhatsAppEventsService],
-  exports: [WhatsAppService, WhatsAppEventsService],
+  providers: [WhatsAppService],
+  exports: [WhatsAppService],
 })
 export class WhatsAppModule {}
 
